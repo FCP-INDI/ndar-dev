@@ -1,0 +1,78 @@
+-- Tablespaces?
+-- select tablespace_name from user_tablespaces;
+
+---- atlases table
+--create table atlases (
+--    id number not null,
+--    name varchar2(80),
+--    version varchar2(80),
+--    constraint atlases_pk primary key(id)
+--    );
+--
+---- rois table
+--create table rois (
+--    id number not null,
+--    name varchar2(80),
+--    constraint rois_pk primary key(id),
+--    atlasID number not null,
+--    constraint rois_atlases_fk foreign key(atlasID) references atlases(id)
+--    );
+--
+---- pipelines table
+--create table pipelines (
+--    id number not null,
+--    name varchar2(80),
+--    type varchar2(80),
+--    cfgFileLocation varchar2(256),
+--    tools varchar2(80),
+--    constraint pipelines_pk primary key(id)
+--    );
+--
+---- derivatives table
+--create table derivatives (
+--    id number not null,
+--    name varchar2(80),
+--    constraint derivatives_pk primary key(id),
+--    roiID number not null,
+--    constraint derivatives_rois_fk foreign key(roiID) references rois(id)
+--    );
+ 
+---- create auto-increment id (for primary key)
+--create sequence seq_derivatives start with 1 increment by 1;
+---- create trigger
+--create or replace trigger trg_derivatives
+--before insert on derivatives
+--for each row
+--begin
+--     select seq_derivatives.nextval into :new.id from dual;
+--end;
+--
+--alter table derivatives
+--    add pipelineID number not null
+--    add constraint derivatives_pipelines_fk foreign key(pipelineID) references pipelines(id)
+--    alter table derivatives
+--        modify datasetid number not null
+
+-- add primary key
+--ALTER TABLE table_name ADD CONSTRAINT table_name_pk PRIMARY KEY ( table_entry_ID ) ;
+
+--create table derivatives_unormd
+--(
+--derivativeID number not null,
+--atlasName varchar2(80),
+--atlasVersion varchar2(80),
+--roi varchar2(80),
+--pipelineName varchar2(80),
+--pipelineType varchar2(80),
+--cfgFileLocation varchar2(256),
+--pipelineTools varchar2(256),
+--pipelineVersion varchar2(80),
+--pipelineDescription varchar2(256),
+--derivativeName varchar2(80),
+--measureName varchar2(256),
+--datasetID number not null,
+--timestamp timestamp,
+---- constraints
+--constraint derivatives_unormd_pk primary key(derivativeID),
+--constraint derivatives_unormd_image03_fk foreign key(datasetID) references image03(image03_id)
+--)
