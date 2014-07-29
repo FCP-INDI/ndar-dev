@@ -12,6 +12,8 @@ The OASIS template data files can be acquired from [Mindboggle](http://mindboggl
 Python depenencies:
 - Boto - Python module for interacting with Amazon Web Services
 - cx_Oracle - Python module for interacting with Oracle databases
+- Nibabel - Python module for read/write access to various neuroimaging data formats
 - Nipype - Python module for Neuroimaging data analysis pipelines
+- Numpy - Python module for fast numerical computations
 - PyYaml - Python module for parsing and emitting Yaml files
 
