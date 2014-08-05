@@ -10,10 +10,10 @@ The OASIS template data files can be acquired from [Mindboggle](http://mindboggl
 * Note the fetch_creds module needed for this database is a custom-module which returns AWS and RDS Oracle DB sensitive information. One can replace the variables this module returns with their own keys and database log-in information to use this functionality.
 
 Python depenencies:
-- Boto - Python module for interacting with Amazon Web Services
-- cx_Oracle - Python module for interacting with Oracle databases
-- Nibabel - Python module for read/write access to various neuroimaging data formats
-- Nipype - Python module for Neuroimaging data analysis pipelines
-- Numpy - Python module for fast numerical computations
-- PyYaml - Python module for parsing and emitting Yaml files
+- [Boto](http://boto.readthedocs.org/en/latest/) - Python module for interacting with Amazon Web Services
+- [cx_Oracle](http://cx-oracle.readthedocs.org/en/latest/index.html) - Python module for interacting with Oracle databases
+- [Nibabel](http://nipy.org/nibabel/api.html) - Python module for read/write access to various neuroimaging data formats
+- [Nipype](http://nipy.sourceforge.net/nipype/documentation.html) - Python module for Neuroimaging data analysis pipelines
+- [Numpy](http://docs.scipy.org/doc/numpy/reference/) - Python module for fast numerical computations
+- [PyYaml](http://pyyaml.org/wiki/PyYAMLDocumentation) - Python module for parsing and emitting Yaml files
 
