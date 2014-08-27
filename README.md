@@ -10,10 +10,16 @@ The OASIS template data files can be acquired from [Mindboggle](http://mindboggl
 * Note the fetch_creds module needed for this database is a custom-module which returns AWS and RDS Oracle DB sensitive information. One can replace the variables this module returns with their own keys and database log-in information to use this functionality.
 
 Python depenencies:
-- [Boto](http://boto.readthedocs.org/en/latest/) - Python module for interacting with Amazon Web Services
-- [cx_Oracle](http://cx-oracle.readthedocs.org/en/latest/index.html) - Python module for interacting with Oracle databases
-- [Nibabel](http://nipy.org/nibabel/api.html) - Python module for read/write access to various neuroimaging data formats
-- [Nipype](http://nipy.sourceforge.net/nipype/documentation.html) - Python module for Neuroimaging data analysis pipelines
-- [Numpy](http://docs.scipy.org/doc/numpy/reference/) - Python module for fast numerical computations
-- [PyYaml](http://pyyaml.org/wiki/PyYAMLDocumentation) - Python module for parsing and emitting Yaml files
+- [Boto](http://boto.readthedocs.org/en/latest/) - Python package for interacting with Amazon Web Services.
+- [cx_Oracle](http://cx-oracle.readthedocs.org/en/latest/index.html) - Python package for interacting with Oracle databases.
+- [Nibabel](http://nipy.org/nibabel/api.html) - Python package for read/write access to various neuroimaging data formats.
+- [Nipype](http://nipy.sourceforge.net/nipype/documentation.html) - Python package for Neuroimaging data analysis pipelines.
+- [Numpy](http://docs.scipy.org/doc/numpy/reference/) - Python package for fast numerical computations.
+- [PyYaml](http://pyyaml.org/wiki/PyYAMLDocumentation) - Python package for parsing and emitting Yaml files.
+- [pydicom](https://code.google.com/p/pydicom/) - Python package for working with DICOM files.
 
+Software dependencies:
+- [ANTs](http://stnava.github.io/ANTs/) - A popular medical image registration and segmentation toolkit.
+- [FreeSurfer](http://surfer.nmr.mgh.harvard.edu/) - An open source software suite for processing and analyzing (human) brain MRI images.
+- [FSL](http://fsl.fmrib.ox.ac.uk/fsl/fslwiki/) - A comprehensive library of analysis tools for FMRI, MRI and DTI brain imaging data.
+- [Oracle Instant Client](http://www.oracle.com/technetwork/database/features/instant-client/index-097480.html) - A set of tools to interact with Oracle databases. Only the basic-lite, sdk, and sql packages need to be installed.
