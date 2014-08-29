@@ -2,12 +2,12 @@ This repository contains the code used to preprocess data from the NDAR database
 
 ## Repository files
 - act_interface.py - Nipype interface made to work with the ANTs cortical thickness extraction script found [here](https://raw.githubusercontent.com/stnava/ANTs/master/Scripts/antsCorticalThickness.sh)
-- ndar_act_cluster.py - Streamlined script to execute the nipype workflow from the interface defined in act_interface.py and then upload the results and log files to the NDAR database. This script is designed to be launched from a cluster of C-PAC AMI's on AWS using the Sun Grid Engine job scheduler.
-*Note: The `fetch_creds` module needed for this database is a custom-module which returns AWS and RDS Oracle DB sensitive information. One can replace the variables this module returns with their own keys and database log-in information to use this functionality.*
-
+- aws_walkthrough.txt - Instructions on how to use AWS EC2 to launch and interact with a C-PAC AMI.
+- credentials_template.csv - A template for how the fetch_creds.py module expects in order to read in credentials and use them for python interfaces to various AWS services
+- fetch_creds.py - A python module which reads in a csv file (e.g. credentials_template) and uses this information to create variables and objects used in interfacing with AWS via python.
+- ndar_act_run.py - Streamlined script to execute the nipype workflow from the interface defined in act_interface.py and then upload the results and log files to the NDAR database. This script is designed to be launched from a cluster of C-PAC AMI's on AWS using the Sun Grid Engine job scheduler.
 - ndar_run.sge - Bash script to use to submit the ndar_act_cluster.py script in parallel over a cluster of nodes.
 - ndar_unpack - Bash-executable Python script which will download and extract imaging data from the NDAR database. Originally cloned from [here](https://raw.githubusercontent.com/chaselgrove/ndar/master/ndar_unpack/ndar_unpack), but slightly modified to add untar-ing functionality.
-- aws_walkthrough.txt - Instructions on how to use AWS EC2 to launch and interact with a C-PAC AMI.
 
 The OASIS template data files can be acquired from [Mindboggle](http://mindboggle.info) using this [link](http://mindboggle.info/data/templates/atropos/OASIS-30_Atropos_template.tar.gz) and this [link](http://mindboggle.info/data/atlases/jointfusion/OASIS-TRT-20_jointfusion_DKT31_CMA_labels_in_OASIS-30.nii.gz).
 

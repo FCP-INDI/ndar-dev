@@ -1,4 +1,4 @@
-WS EC2 Walkthrough
+AWS EC2 Walkthrough
 1) Go to http://aws.amazon.com/console/
 2) Click the "Sign in to the AWS Console" button
 3) Enter your credentials: Account, User Name, Password
@@ -21,4 +21,3 @@ WS EC2 Walkthrough
 20) Open a terminal and type: ssh -i {path/to/keypair.pem} -X ubuntu@{public-dns-ofinstasnce-amazonaws.com}
 21) It will start the connection and ask if you trust the source; type "yes"
 22) You should now be in the instance! There should be cpac related files in /home/ubuntu/. Feel free to launch cpac_gui and have at it!
-
