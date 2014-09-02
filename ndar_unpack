@@ -625,7 +625,9 @@ class DICOMData(BaseData):
             except AttributeError:
                 raise DataError('DICOM file without Series Instance UID')
             if not uid:
-                raise DataError('DICOM file with empty Series Instance UID')
+                # Create dummy uid for the purpose of extracting the file
+                uid = '001'
+                #raise DataError('DICOM file with empty Series Instance UID')
             if uid not in series_uids:
                 series_uids.append(uid)
         if len(series_uids) > 1:
