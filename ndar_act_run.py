@@ -517,7 +517,7 @@ def main(sub_list, sub_idx):
         sys.exit()
 
     # --- Download and extract data from NDAR_Central S3 bucket ---
-    nifti_file = base_path + 'inputs/' + img03_id_str + '.nii.gz'
+    nifti_file = base_path + 'inputs-ef/' + img03_id_str + '.nii.gz'
     # Execute ndar_unpack for that subject
     cmd = '/data/ndar_unpack'
     if not os.path.exists(nifti_file):
