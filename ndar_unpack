@@ -490,9 +490,10 @@ class MINCData(BaseData):
             raise TypeError('bad extension')
         # since both MINC and MINC2 use .mnc, we also check the NetCDF magic 
         # number here
-        if open(self.contents[0]).read(3) != 'CDF':
-            raise TypeError('bad magic number')
-        rv = self.call(['mri_convert', '-ro', self.contents[0]])
+        if open(self.contents[0]).read(3) == 'CDF':
+            rv = self.call(['mri_convert', '-ro', self.contents[0]])
+        else:
+            rv = self.call(['mnc2nii', '-nii', self.contents[0]])
         if rv:
             raise DataError('could not read .mnc')
         return
@@ -508,7 +509,10 @@ class MINCData(BaseData):
     def nii_gz(self, path=None):
         if not path:
             path = os.path.join(self.tempdir, 'volume.nii.gz')
-        self.check_call(['mri_convert', self.contents[0], path])
+        try:
+            self.check_call(['mri_convert', self.contents[0], path])
+        except:
+            self.check_call(['mnc2nii', '-nii', self.contents[0], path])
         return path
 
     def header(self):
