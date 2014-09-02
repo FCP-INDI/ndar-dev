@@ -25,4 +25,5 @@ Software dependencies:
 - [ANTs](http://stnava.github.io/ANTs/) - A popular medical image registration and segmentation toolkit.
 - [FreeSurfer](http://surfer.nmr.mgh.harvard.edu/) - An open source software suite for processing and analyzing (human) brain MRI images.
 - [FSL](http://fsl.fmrib.ox.ac.uk/fsl/fslwiki/) - A comprehensive library of analysis tools for FMRI, MRI and DTI brain imaging data.
+- [minc-tools](https://github.com/BIC-MNI/minc-tools/) - Package of utilities that work on MINC format images.
 - [Oracle Instant Client](http://www.oracle.com/technetwork/database/features/instant-client/index-097480.html) - A set of tools to interact with Oracle databases. Only the basic-lite, sdk, and sql packages need to be installed.
