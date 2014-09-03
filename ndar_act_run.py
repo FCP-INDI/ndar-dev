@@ -99,7 +99,7 @@ def create_roi_dic(roi_txt_path):
 
 
 # Create the ACT nipype workflow
-def create_workflow():
+def create_workflow(base_path, img03_id_str, nifti_file, oasis_path):
     '''
     Method to create the nipype workflow that is executed for
     preprocessing the data
@@ -124,6 +124,9 @@ def create_workflow():
     from nipype import logging as np_logging
     from nipype import config
 
+    # Init variables
+    oasis_trt_20 = oasis_path + 'OASIS-TRT-20_jointfusion_DKT31_CMA_labels_in_OASIS-30.nii'
+    
     # Setup nipype workflow
     wf_base_dir = base_path + 'work-dirs/' + img03_id_str
     if not os.path.exists(wf_base_dir):
@@ -148,7 +151,7 @@ def create_workflow():
                                        'T_template0_BrainCerebellumProbabilityMask.nii.gz'  #-m
     thickness.inputs.brain_seg_priors = oasis_path + \
                                         'Priors2/priors%d.nii.gz'  #-p
-    thickness.inputs.intensity_template = oasis_path + 
+    thickness.inputs.intensity_template = oasis_path + \
                                           'T_template0_BrainCerebellum.nii.gz'  #-t
     thickness.inputs.extraction_registration_mask = oasis_path + \
                                                     'T_template0_BrainCerebellumExtractionMask.nii.gz'  #-f
@@ -202,7 +205,7 @@ def create_workflow():
     np_logging.update_logging(config)
 
     # Return the workflow
-    return wf
+    return wf, crash_dir
 
     
 # Get next primary key id
@@ -393,9 +396,16 @@ def roi_func(mask, thickness_normd):
     # Return the filepath to the output
     return roi_stats_file
 
-
+import logging
 # Setup log file
 def setup_logger(logger_name, log_file, level=logging.INFO):
+    '''
+    Docstring for setup_logger
+    '''
+
+    # Import packages
+    import logging
+
     l = logging.getLogger(logger_name)
     formatter = logging.Formatter('%(asctime)s : %(message)s')
     fileHandler = logging.FileHandler(log_file, mode='w')
@@ -464,7 +474,6 @@ def main(sub_list, sub_idx):
     creds_path = '/data/creds/Daniels_credentials.csv'
     # Oasis template paths
     oasis_path = '/data/OASIS-30_Atropos_template/'
-    oasis_trt_20 = oasis_path + 'OASIS-TRT-20_jointfusion_DKT31_CMA_labels_in_OASIS-30.nii'
     oasis_T_template0 = oasis_path + 'T_template0.nii.gz'
     oasis_roi_yaml = oasis_path + 'oasis_roi_map.yml'
     # Load in OASIS ROI map
@@ -476,7 +485,7 @@ def main(sub_list, sub_idx):
     cursor = fetch_creds.return_cursor(creds_path)
 
     # Get subject info
-    subject = sub_list[sub_idx]
+    subject = sub_list[sub_idx-1]
     img03_id_str = str(subject[0])
     s3_path = subject[1]
     
@@ -490,7 +499,7 @@ def main(sub_list, sub_idx):
     setup_logger('log1', log_file)
     ndar_log = logging.getLogger('log1')
     # Log input image stats
-    ndar_log.info('-------- RUNNING SUBJECT NO. #%d --------' % (idx+1))
+    ndar_log.info('-------- RUNNING SUBJECT NO. #%d --------' % (sub_idx))
     ndar_log.info('Start time: %s ' % time.ctime(start))
     ndar_log.info('Input S3 path: %s' % s3_path)
     ndar_log.info('Input IMAGE03 ID: %s' % img03_id_str)
@@ -556,7 +565,7 @@ def main(sub_list, sub_idx):
         sys.exit()
 
     # Create the nipype workflow
-    wf = create_workflow()
+    wf, crash_dir = create_workflow(base_path, img03_id_str, nifti_file, oasis_path)
 
     # --- Run the workflow ---
     wf_status = 0
@@ -660,6 +669,7 @@ if __name__ == '__main__':
     # Import packages
     import os
     import sys
+    import yaml
 
     # Init variables
     yaml_file = os.path.abspath(sys.argv[1])
