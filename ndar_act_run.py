@@ -43,6 +43,9 @@ def add_db_record(cursor, img03_id, wf_status, extract_status, log_path,
         The function doesn't return any value, it inserts an entry into
         the RESULTS_STATS table.
     '''
+    
+    # Import packages
+    import time
 
     # Grab the highest rs_id and increment
     rs_id = get_next_pk(cursor, 'results_stats','rs_id')
