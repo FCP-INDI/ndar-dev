@@ -11,13 +11,16 @@ are then uploaded to an AWS-hosted Oracle database via miNDAR.
 '''
 
 # Add result_stats database record
-def add_db_record(img03_id, wf_status, extract_status, log_path, 
+def add_db_record(cursor, img03_id, wf_status, extract_status, log_path, 
                   nifti_path, roi_path):
     '''
     Method to add a record to the RESULTS_STATS table on miNDAR
 
     Parameters
     ----------
+    cursor : OracleCursor
+        a cx_Oracle cursor object which is used to query and modify an
+        Oracle database
     img03_id : integer
         image03_id of the image result to be inserted
     wf_status : string
@@ -594,7 +597,7 @@ def main(sub_list, sub_idx):
         s3_log_list.append(s3_log_path)
         upload_to_s3(bucket, up_log_list, s3_log_list)
         # Finally upload the record to the database
-        add_db_record(img03_id_str, 'N/A', extract_status_str, 
+        add_db_record(cursor, img03_id_str, 'N/A', extract_status_str, 
                       'https://s3.amazonaws.com/ndar-data/' + s3_log_path, 'N/A', 'N/A')
         # And quit
         sys.exit()
@@ -692,7 +695,8 @@ def main(sub_list, sub_idx):
     upload_to_s3(bucket, up_log_list, s3_log_list) 
 
     # Finally upload the record to the database
-    add_db_record(img03_id_str, 
+    add_db_record(cursor, 
+                  img03_id_str, 
                   wf_status_str, 
                   extract_status_str, 
                   's3://ndar-data/'+s3_log_path, 

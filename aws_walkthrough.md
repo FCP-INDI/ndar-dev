@@ -25,9 +25,17 @@ AWS EC2 Walkthrough
 
 Benchmark Walkthrough
 ---------------------
-1) Follow the above AWS EC2 walkthrough above and select the "C-PAC with benchmark" AMI in step 9. Follow through to step 22 to launch the C-PAC GUI once logged in to the instance.
-2) On the left-hand side of the main window, click the "Load" button under "Subject Lists."
-3) Select the benchmark subject list yaml file at /home/ubuntu/cpac_benchmark/settings/subject_lists
-4) Name the subject list (e.g. "Benchmark Subjects") and click "OK"
-5) 
-
+1. Follow the above AWS EC2 walkthrough above and select the "C-PAC with benchmark" AMI in step 9. Follow through to step 22 to launch the C-PAC GUI once logged in to the instance.
+2. On the left-hand side of the main window, click the "Load" button under "Subject Lists."
+3. Select the benchmark subject list yaml file at "/home/ubuntu/cpac_benchmark/settings/subject_lists/CPAC_subject_list.yml"
+4. Name the subject list (e.g. "Benchmark Subjects") and click "OK"
+5. Check the checkbox next to the subject list name. You can also click "View" here to parse through the subject list to see if it looks correct.
+6. On the right-hand side of the main window, click the "Load" button under "Pipelines."
+7. Select the pipeline configuration yaml file at "/home/ubuntu/cpac_benchmark/settings/configs/pipeline_config_benchmark.yml"
+8. Check the checkbox next to the pipeline configuration name.
+9. You can click "Edit" if you wish to change any of the default parameters of the pipeline configuration. Here you can choose what types of preprocessing to do and which outputs to produce.
+10. Once you are done editing the pipeline configuration, save it.
+11. Back at the main window, the CPAC subject list and the CPAC pipeline config checkboxes should both be checked.
+12. Now click "Run Individual Level Analysis" at the bottom of the window and the run will start.
+13. It is possible that you may run in to errors while processing. Please check our [Github page](https://github.com/FCP-INDI/C-PAC) and look through the Issues list for support. Feel free to post new issues here as well.
+14. At the conclusion of the run, all of the outputs produced should be in "/home/ubuntu/cpac_benchmark/output".
