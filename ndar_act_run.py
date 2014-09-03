@@ -42,7 +42,7 @@ def add_db_record(img03_id, wf_status, extract_status, log_path,
     '''
 
     # Grab the highest rs_id and increment
-    rs_id = get_next_pk('results_stats','rs_id')
+    rs_id = get_next_pk(cursor, 'results_stats','rs_id')
     # Form the insert command
     cmd = '''
           insert into results_stats
