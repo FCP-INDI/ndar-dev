@@ -1,27 +1,27 @@
 AWS EC2 Walkthrough
 -------------------
-1) Go to http://aws.amazon.com/console/
-2) Click the "Sign in to the AWS Console" button
-3) Enter your credentials: Account, User Name, Password
-4) Click on "EC2" - Amazon's Elastic Compute Cloud service. This allows you to configure and launch virtual machines in Amazon's cloud
-5) You will see the EC2 Management Console. Here you can configure and launch new virtual machines, or instances. These instances are launched from a saved-state virtual machine known as an "AMI", or Amazon Machine Image.
-6) Amazon has different regions that it hosts its web services from, e.g. Oregon, Northern Virginia, Tokyo, etc. In the upper right-hand corner there will be a region that you are logged into next to your user name. Change this to N. Virginia (as that is where all of the development work up to this point has been done). * Note if you are not in the N. Virginia region, you will not be able to see the CPAC AMI when you search the community AMIs.
-7) In the left-hand column under the "INSTANCES" header, click "Instances". This is a dashboard of all instances you currently have running on the cloud in AWS. Click the blue "Launch Instance" button.
-8) On the left-hand side of the new page, click on the "Community AMIs" tab and search "cpac" in the search text box.
-9) The "C-PAC" and "C-PAC with benchmark" AMIs should appear. Choose the AMIs based on whether you would like to run the benchmark dataset or not. Hit "Select."
-10) This next page is where you choose the instance type, that is, the hardware specifications for your instance. Typically, for CPAC to run effectively, around 16GB (or greater) of RAM is optimal. The m3.xlarge instance type has 15GB of RAM and 4 CPUs and functions well with CPAC. To select this type, click on the "General purpose" tab and select the m3.xlarge size instance and click the "Next: Configure Instance Details" button.
-11) This page can be used to launch multiple instances from this AMI, or request Spot instances as well as other things (including virtual private network, VPC options, etc). For now, we do not need to do anything here, but it can be customized in the future. Click "Next: Add Storage."
-12) Here we can change how much storage is allocated for the instance being launched. For the CPAC Benchmark, about 125GB is suficient. Click "Next: Tag Instance."
-13) Here, we can tag the instance to give it a name as a reminder for why we launched it. Something like 'CPAC-Demo' works. Click "Next: Configure Security Group."
-14) Here is where we can modify who has access to this instance. The launch-wizard security group being created with the instance works (as it allows for ssh access). If you would like to customize security and user access to the AMI, it can be done here. Click "Review and Launch."
-15) This final page summarizes the instance details you are about to launch. Everything should look ok (there might be some warnings at the top as a result of security or instance type being not in the free tier, which is ok).
-16) Click the "Launch" button. A dialogue box opens asking about choosing a key pair for the instance. Every instance requires a key pair in order to securely login and use it. If you have not created a key pair yet, change the top drop down menu to "Create a new key pair." Then name the key pair something like "user-cpacdemo-northva". Click "Download Key Pair" and save it to your machine.
-17) Change the top drop down menu bar to "Choose an existing key pair" and select the name of the key pair you just downloaded in the other drop down menu. Check the acknowledgement check box and launch the instance.
-18) You can click the "View Instances" blue button on the lower right of the page after to watch the instance start up.
-19) Once it is up and running (should say 2/2 under "Status checks" column), you can ssh into the instance and use it. Click on the instance and copy the string of the instance "Public DNS" (...amazonaws.com or something)
-20) Open a terminal and type: `ssh -i {path/to/keypair.pem} -X ubuntu@{public-dns-ofinstasnce-amazonaws.com}`
-21) It will start the connection and ask if you trust the source; type "yes"
-22) You should now be in the instance! There should be cpac related files in /home/ubuntu/. Feel free to launch `cpac_gui` and have at it!
+1. Go to http://aws.amazon.com/console/
+2. Click the "Sign in to the AWS Console" button
+3. Enter your credentials: Account, User Name, Password
+4. Click on "EC2" - Amazon's Elastic Compute Cloud service. This allows you to configure and launch virtual machines in Amazon's cloud
+5. You will see the EC2 Management Console. Here you can configure and launch new virtual machines, or instances. These instances are launched from a saved-state virtual machine known as an "AMI", or Amazon Machine Image.
+6. Amazon has different regions that it hosts its web services from, e.g. Oregon, Northern Virginia, Tokyo, etc. In the upper right-hand corner there will be a region that you are logged into next to your user name. Change this to N. Virginia (as that is where all of the development work up to this point has been done). * Note if you are not in the N. Virginia region, you will not be able to see the CPAC AMI when you search the community AMIs.
+7. In the left-hand column under the "INSTANCES" header, click "Instances". This is a dashboard of all instances you currently have running on the cloud in AWS. Click the blue "Launch Instance" button.
+8. On the left-hand side of the new page, click on the "Community AMIs" tab and search "cpac" in the search text box.
+9. The "C-PAC" and "C-PAC with benchmark" AMIs should appear. Choose the AMIs based on whether you would like to run the benchmark dataset or not. Hit "Select."
+10. This next page is where you choose the instance type, that is, the hardware specifications for your instance. Typically, for CPAC to run effectively, around 16GB (or greater) of RAM is optimal. The m3.xlarge instance type has 15GB of RAM and 4 CPUs and functions well with CPAC. To select this type, click on the "General purpose" tab and select the m3.xlarge size instance and click the "Next: Configure Instance Details" button.
+11. This page can be used to launch multiple instances from this AMI, or request Spot instances as well as other things (including virtual private network, VPC options, etc). For now, we do not need to do anything here, but it can be customized in the future. Click "Next: Add Storage."
+12. Here we can change how much storage is allocated for the instance being launched. For the CPAC Benchmark, about 125GB is suficient. Click "Next: Tag Instance."
+13. Here, we can tag the instance to give it a name as a reminder for why we launched it. Something like 'CPAC-Demo' works. Click "Next: Configure Security Group."
+14. Here is where we can modify who has access to this instance. The launch-wizard security group being created with the instance works (as it allows for ssh access). If you would like to customize security and user access to the AMI, it can be done here. Click "Review and Launch."
+15. This final page summarizes the instance details you are about to launch. Everything should look ok (there might be some warnings at the top as a result of security or instance type being not in the free tier, which is ok).
+16. Click the "Launch" button. A dialogue box opens asking about choosing a key pair for the instance. Every instance requires a key pair in order to securely login and use it. If you have not created a key pair yet, change the top drop down menu to "Create a new key pair." Then name the key pair something like "user-cpacdemo-northva". Click "Download Key Pair" and save it to your machine.
+17. Change the top drop down menu bar to "Choose an existing key pair" and select the name of the key pair you just downloaded in the other drop down menu. Check the acknowledgement check box and launch the instance.
+18. You can click the "View Instances" blue button on the lower right of the page after to watch the instance start up.
+19. Once it is up and running (should say 2/2 under "Status checks" column), you can ssh into the instance and use it. Click on the instance and copy the string of the instance "Public DNS" (...amazonaws.com or something)
+20. Open a terminal and type: `ssh -i {path/to/keypair.pem} -X ubuntu@{public-dns-ofinstasnce-amazonaws.com}`
+21. It will start the connection and ask if you trust the source; type "yes"
+22. You should now be in the instance! There should be cpac related files in /home/ubuntu/. Feel free to launch `cpac_gui` and have at it!
 
 Benchmark Walkthrough
 ---------------------
