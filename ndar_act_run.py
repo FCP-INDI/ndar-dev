@@ -99,15 +99,21 @@ def create_roi_dic(roi_txt_path):
 
 
 # Create the ACT nipype workflow
-def create_workflow(base_path, img03_id_str, nifti_file, oasis_path):
+def create_workflow(base_path, img03_id_str, input_skull, oasis_path):
     '''
     Method to create the nipype workflow that is executed for
     preprocessing the data
 
     Parameters
     ----------
-    bucket : boto.s3.bucket.Bucket instance
-        an instance of the boto S3 bucket class to download from
+    base_path : string
+        filepath to the base directory to create the workflow folders
+    img03_id_str : string
+        string of the image03_id of the input subject to process
+    input_skull : string
+        filepath to the input file to run antsCorticalThickness.sh on
+    oasis_path : string
+        filepath to the oasis
 
     Returns
     -------
@@ -145,7 +151,7 @@ def create_workflow(base_path, img03_id_str, nifti_file, oasis_path):
     thickness.inputs.dimension = 3
     thickness.inputs.segmentation_iterations = 1
     thickness.inputs.segmentation_weight = 0.25
-    thickness.inputs.input_skull = nifti_file #-a
+    thickness.inputs.input_skull = input_skull #-a
     thickness.inputs.template = oasis_path + 'T_template0.nii.gz' #-e
     thickness.inputs.brain_prob_mask = oasis_path + \
                                        'T_template0_BrainCerebellumProbabilityMask.nii.gz'  #-m
@@ -209,7 +215,7 @@ def create_workflow(base_path, img03_id_str, nifti_file, oasis_path):
 
     
 # Get next primary key id
-def get_next_pk(table, pk_id):
+def get_next_pk(cursor, table, pk_id):
     '''
     Method to return the next (highest+1) primary key from a table to
     use for the next entry. If no entries are found, the method will
@@ -217,6 +223,9 @@ def get_next_pk(table, pk_id):
 
     Parameters
     ----------
+    cursor : OracleCursor
+        a cx_Oracle cursor object which is used to query and modify an
+        Oracle database
     table : string
         name of the table to query
     pk_id : string
@@ -247,7 +256,29 @@ def get_next_pk(table, pk_id):
 
 
 # Function to load the ROIS to the unorm'd database
-def insert_unormd(img03_id, roi_dic=None, s3_path=None):
+def insert_unormd(cursor, img03_id_str, roi_dic=None, s3_path=None):
+    '''
+    Method to return the next (highest+1) primary key from a table to
+    use for the next entry. If no entries are found, the method will
+    return 1.
+
+    Parameters
+    ----------
+    cursor : OracleCursor
+        a cx_Oracle cursor object which is used to query and modify an
+        Oracle database
+    img03_id_str : string
+        string of the image03_id of the input subject to process
+    pk_id : string
+        field name of the column that contains the primary keys
+
+    Returns
+    -------
+    None
+        The function doesn't return any value, it inserts an entry into
+        the un-normalized database tables
+    '''
+
     # Constant arguments for all entries
     atlas_name = 'OASIS-TRT-20_jointfusion_DKT31_CMA_labels_in_OASIS-30.nii.gz'
     atlas_ver = '2mm (2013)'
@@ -256,6 +287,7 @@ def insert_unormd(img03_id, roi_dic=None, s3_path=None):
     cfg_file_loc = 's3://ndar-data/scripts/ndar_act_workflow.py'
     pipeline_tools = 'ants, nipype, python'
     pipeline_ver = 'v0.2'
+    
     # Get guid cmd
     get_guid_cmd = '''
                    select subjectkey from nitrc_image03 
@@ -264,11 +296,12 @@ def insert_unormd(img03_id, roi_dic=None, s3_path=None):
                    '''
     cursor.execute(get_guid_cmd, arg_1=int(img03_id))
     guid = cursor.fetchall()[0][0]
-    # If flag is set, insert ROI means 
+
+    # If roi dictionary is passed in, insert ROI means 
     if roi_dic:
         deriv_name = 'cortical thickness'
         # Get next deriv_id here
-        deriv_id = get_next_pk('derivatives_unormd','id') 
+        deriv_id = get_next_pk(cursor, 'derivatives_unormd','id') 
         # Command string
         cmd = '''
               insert into %s
@@ -315,11 +348,12 @@ def insert_unormd(img03_id, roi_dic=None, s3_path=None):
                            col_18 = guid)
             # ...and increment the primary key
             deriv_id +=1
+
     # Otherwise, inserting nifti file derivative
     if s3_path:
         deriv_name = 'Normalized cortical thickness image'
         # Get next deriv_id here
-        deriv_id = get_next_pk('img_derivatives_unormd','id') 
+        deriv_id = get_next_pk(cursor, 'img_derivatives_unormd','id') 
         cmd = '''
               insert into %s
               (id, roi, pipelinename, pipelinetype, cfgfilelocation, 
@@ -396,9 +430,8 @@ def roi_func(mask, thickness_normd):
     # Return the filepath to the output
     return roi_stats_file
 
-import logging
 # Setup log file
-def setup_logger(logger_name, log_file, level=logging.INFO):
+def setup_logger(logger_name, log_file, level):
     '''
     Docstring for setup_logger
     '''
@@ -420,6 +453,10 @@ def setup_logger(logger_name, log_file, level=logging.INFO):
 
 # Add result_stats database record
 def upload_to_s3(aws_bucket, up_files, s3_files):
+    '''
+    Docstring for upload_to_s3
+    '''
+
     from boto.s3.key import Key
     for (f,s) in zip(up_files,s3_files):
         k = Key(aws_bucket)
@@ -474,7 +511,6 @@ def main(sub_list, sub_idx):
     creds_path = '/data/creds/Daniels_credentials.csv'
     # Oasis template paths
     oasis_path = '/data/OASIS-30_Atropos_template/'
-    oasis_T_template0 = oasis_path + 'T_template0.nii.gz'
     oasis_roi_yaml = oasis_path + 'oasis_roi_map.yml'
     # Load in OASIS ROI map
     oasis_roi_map = yaml.load(open(oasis_roi_yaml,'r'))
@@ -496,7 +532,7 @@ def main(sub_list, sub_idx):
 
     # --- Set up log file ---
     log_file = base_path + 'logs/' + img03_id_str + '.log'
-    setup_logger('log1', log_file)
+    setup_logger('log1', log_file, logging.INFO)
     ndar_log = logging.getLogger('log1')
     # Log input image stats
     ndar_log.info('-------- RUNNING SUBJECT NO. #%d --------' % (sub_idx))
@@ -510,9 +546,8 @@ def main(sub_list, sub_idx):
           from results_stats
           where img03_id = :arg_1
           '''
-    cursor.execute(cmd,arg_1=int(img03_id_str))
+    cursor.execute(cmd, arg_1=int(img03_id_str))
     result = cursor.fetchall()
-
     # If the record already exists, check to see if it was successful
     wkflow_flag = 0
     for record in result:
@@ -618,10 +653,11 @@ def main(sub_list, sub_idx):
         sub_roi_dic = create_roi_dic(up_roi_path)
         try:
             # Insert the ROIs into the unorm'd and norm'd databases
-            insert_unormd(img03_id_str, roi_dic=sub_roi_dic)
+            insert_unormd(cursor, img03_id_str, roi_dic=sub_roi_dic)
             # Insert the act nifti into the unorm'd and norm'd databases
-            insert_unormd(img03_id_str, s3_path=full_s3_nifti_path)
-        except Exception, e:
+            insert_unormd(cursor, img03_id_str, s3_path=full_s3_nifti_path)
+        except:
+            e = sys.exc_info()[0]
             ndar_log.info('Error inserting results to MINDAR, message: %s' % str(e))
             wf_status_str = 'Error inserting results into MINDAR database'
     # Otherwise, there were crash files, upload those
