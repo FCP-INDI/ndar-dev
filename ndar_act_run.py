@@ -284,6 +284,12 @@ def insert_unormd(cursor, img03_id_str, roi_dic=None, s3_path=None):
         The function doesn't return any value, it inserts an entry into
         the un-normalized database tables
     '''
+    # Import packages
+    import time
+    oasis_path = '/data/OASIS-30_Atropos_template/'
+    oasis_roi_yaml = oasis_path + 'oasis_roi_map.yml'
+    # Load in OASIS ROI map
+    oasis_roi_map = yaml.load(open(oasis_roi_yaml,'r'))
 
     # Constant arguments for all entries
     atlas_name = 'OASIS-TRT-20_jointfusion_DKT31_CMA_labels_in_OASIS-30.nii.gz'
@@ -293,16 +299,15 @@ def insert_unormd(cursor, img03_id_str, roi_dic=None, s3_path=None):
     cfg_file_loc = 's3://ndar-data/scripts/ndar_act_workflow.py'
     pipeline_tools = 'ants, nipype, python'
     pipeline_ver = 'v0.2'
-    
     # Get guid cmd
     get_guid_cmd = '''
                    select subjectkey from nitrc_image03 
                    where
                    image03_id = :arg_1
                    '''
-    cursor.execute(get_guid_cmd, arg_1=int(img03_id))
+    img03_id = int(img03_id_str)
+    cursor.execute(get_guid_cmd, arg_1=img03_id)
     guid = cursor.fetchall()[0][0]
-
     # If roi dictionary is passed in, insert ROI means 
     if roi_dic:
         deriv_name = 'cortical thickness'
@@ -379,6 +384,7 @@ def insert_unormd(cursor, img03_id_str, roi_dic=None, s3_path=None):
         roi = 'Grey matter'
         roi_desc = 'Grey matter cortex'
         template = 'OASIS-30_Atropos Template'
+        print 'made it to cursor command on s3 upload'
         # Execute insert command
         cursor.execute(cmd % 'img_derivatives_unormd',
                        col_1 = deriv_id,
@@ -609,18 +615,28 @@ def main(sub_list, sub_idx):
     wf, crash_dir = create_workflow(base_path, img03_id_str, nifti_file, oasis_path)
 
     # --- Run the workflow ---
-    wf_status = 0
-    try:
-        ndar_log.info('Running the workflow...')
-        wf.run()
-        # We're successful at this point, add it as a file to the completed path
-        ndar_log.info('Workflow completed successfully for IMAGE03 ID %s' % img03_id_str)
+    wf_base_dir = base_path + 'work-dirs/' + img03_id_str
+    up_nifti_path = wf_base_dir + \
+                    '/output/OUTPUT_CorticalThicknessNormalizedToTemplate.nii.gz'
+    up_roi_path = wf_base_dir + '/output/ROIstats.txt'
+    if os.path.exists(up_nifti_path) and os.path.exists(up_roi_path):
         wf_status = 1
-        finish_str = 'Finish time: %s'
-    # If the workflow run fails
-    except:
-        ndar_log.info('ACT Workflow failed for IMAGE03 ID %s' % img03_id_str)
-        finish_str = 'Crash time: %s'
+    else:
+        wf_status = 0
+    if wf_status == 0:
+	    try:
+                ndar_log.info('Running the workflow...')
+                wf.run()
+                # We're successful at this point, add it as a file to the completed path
+                ndar_log.info('Workflow completed successfully for IMAGE03 ID %s' % img03_id_str)
+                wf_status = 1
+                finish_str = 'Finish time: %s'
+	    # If the workflow run fails
+	    except:
+                ndar_log.info('ACT Workflow failed for IMAGE03 ID %s' % img03_id_str)
+                finish_str = 'Crash time: %s'
+    else:
+        finish_str = 'Workflow did not need to run as files were already there: %s'
 
     # Log finish and total computation time
     fin = time.time()
@@ -645,9 +661,10 @@ def main(sub_list, sub_idx):
         full_s3_nifti_path = 's3://ndar_data/' + s3_nifti_path
         full_s3_roi_path = 's3://ndar_data/' + s3_roi_path
         # Upload paths
-        up_nifti_path = wf_base_dir + \
-                        '/output/OUTPUT_CorticalThicknessNormalizedToTemplate.nii.gz'
-        up_roi_path = wf_base_dir + '/output/ROIstats.txt'
+        #wf_base_dir = base_path + 'work-dirs/' + img03_id_str
+        #up_nifti_path = wf_base_dir + \
+        #                '/output/OUTPUT_CorticalThicknessNormalizedToTemplate.nii.gz'
+        #up_roi_path = wf_base_dir + '/output/ROIstats.txt'
         # Append upload/s3 lists with path names
         up_list.append(up_nifti_path)
         up_list.append(up_roi_path)
@@ -659,7 +676,10 @@ def main(sub_list, sub_idx):
         sub_roi_dic = create_roi_dic(up_roi_path)
         try:
             # Insert the ROIs into the unorm'd and norm'd databases
+            ndar_log.info('uploading rois...')
+            print '----------------------------------'
             insert_unormd(cursor, img03_id_str, roi_dic=sub_roi_dic)
+            ndar_log.info('uploading imgs...')
             # Insert the act nifti into the unorm'd and norm'd databases
             insert_unormd(cursor, img03_id_str, s3_path=full_s3_nifti_path)
         except:
