@@ -1,4 +1,4 @@
-ndar_dev
+ndar-dev
 ========
 This repository contains the code used to preprocess data from the NDAR database and upload the results/log files to tables in the database.
 
