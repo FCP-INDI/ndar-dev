@@ -16,9 +16,9 @@ def return_aws_keys(creds_path):
     Parameters
     ----------
     creds_path : string (filepath)
-        path to the csv file with 'Access Key Id' as the header and the
+        path to the csv file with 'ACCESS_KEY_ID' as the header and the
         corresponding ASCII text for the key underneath; same with the
-        'Secret Access Key' string and ASCII text
+        'SECRET_ACCESS_KEY' string and ASCII text
     Returns
     -------
     aws_access_key_id : string
