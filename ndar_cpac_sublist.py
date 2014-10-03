@@ -7,7 +7,7 @@ This module contains functions which assist in building a CPAC-
 compatible subject list from a miNDAR database
 
 Usage:
-    python ndar_cpac_sublist.py <inputs_dir> <study_name>
+    python ndar_cpac_sublist.py <inputs_dir> <study_name> <creds_path>
 '''
 
 # Get S3 image filepath
@@ -123,7 +123,7 @@ def run_ndar_unpack(s3_path, out_nii, aws_access_key_id,
                       'stdout: %s\n\nstderror: %s' % (stdout, stderr))
 
 # Main routine
-def main(inputs_dir, study_name):
+def main(inputs_dir, study_name, creds_path):
     '''
     Function generally used for task-specific scripting of functions
     declared in this module
@@ -136,6 +136,10 @@ def main(inputs_dir, study_name):
     study_name : string
         the name of the study/site that all of the subjects will be
         placed in
+    creds_path : string (filepath)
+        path to the csv file with 'Access Key Id' as the header and the
+        corresponding ASCII text for the key underneath; same with the
+        'Secret Access Key' string and ASCII text
 
     Returns
     -------
@@ -158,7 +162,6 @@ def main(inputs_dir, study_name):
     import sys
 
     # Init variables
-    creds_path = '/home/dclark/Documents/refs/aws/ndar-test-credentials.csv'
     aws_access_key_id, aws_secret_access_key = \
             fetch_creds.return_aws_keys(creds_path)
     cursor = fetch_creds.return_cursor(creds_path)
@@ -246,7 +249,7 @@ def main(inputs_dir, study_name):
     sublist = [{'subject_id': str(k),
                 'unique_id': v['anat'][0][1],
                 'anat': v['anat'][0][-1], 
-                'rest': {'rest_%d_rest' % i : 
+                'rest': {'rest_%d_rest' % (i+1) : 
                          v['rest'][i][-1] for i in range(len(v['rest']))}
                 }
                for k,v in subkey_dict.items()]
@@ -289,7 +292,7 @@ def main(inputs_dir, study_name):
 
         # ndar_unpack the functional
         for folder, s3_path in sub['rest'].items():
-            rest_dir = unique_sub_dir + '/' + folder
+            rest_dir = unique_sub_dir + '/' + folder.split('_rest')[0]
             if not os.path.exists(rest_dir):
                 print 'creating functional directory: %s' % rest_dir
                 os.makedirs(rest_dir)
@@ -311,7 +314,7 @@ def main(inputs_dir, study_name):
         # Print % complete
         i = idx+1
         per = 100*(float(i)/no_subs)
-        print 'Done renaming %d/%d\n%f%% complete' % (i, no_subs, per)
+        print 'Done extracting %d/%d\n%f%% complete' % (i, no_subs, per)
 
 
     # And write it to disk
@@ -329,14 +332,12 @@ if __name__ == '__main__':
 
     # Init variables
     try:
-#        inputs_dir = str(sys.argv[1])
-#        study_name = str(sys.argv[2])
-        inputs_dir = '/home/dclark/data/inputs'
-        study_name = 'test'
+        inputs_dir = str(sys.argv[1])
+        study_name = str(sys.argv[2])
+        creds_path = str(sys.argv[3])
     except IndexError as e:
         print 'Not enough input arguments, got IndexError: %s' % e
         print __doc__
 
     # Run main
-    sublist = main(inputs_dir, study_name)
-    
+    sublist = main(inputs_dir, study_name, creds_path)
