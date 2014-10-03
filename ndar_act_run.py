@@ -575,11 +575,11 @@ def main(sub_list, sub_idx):
     # --- Download and extract data from NDAR_Central S3 bucket ---
     nifti_file = base_path + 'inputs-ef/' + img03_id_str + '.nii.gz'
     # Execute ndar_unpack for that subject
-    cmd = '/data/ndar_unpack'
+    cmd = './ndar_unpack'
     if not os.path.exists(nifti_file):
         cmd_list = [cmd, '--aws-access-key-id', aws_access_key_id, 
                     '--aws-secret-access-key', aws_secret_access_key, 
-                    '-v', nifti_file,s3_path]
+                    '-v', nifti_file, s3_path]
         cmd_str = ' '.join(cmd_list)
         ndar_log.info('Executing command: %s ' % cmd_str)
         p = subprocess.Popen(cmd_list, stdout=subprocess.PIPE, 

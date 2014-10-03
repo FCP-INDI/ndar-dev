@@ -10,7 +10,8 @@ This repository contains the code used to preprocess data from the NDAR database
 - ndar_act_run.py - Streamlined script to execute the nipype workflow from the interface defined in act_interface.py and then upload the results and log files to the NDAR database. This script is designed to be launched from a cluster of C-PAC AMI's on AWS using the Sun Grid Engine job scheduler.
 - ndar_run.sge - Bash script to use to submit the ndar_act_cluster.py script in parallel over a cluster of nodes.
 - ndar_unpack - Bash-executable Python script which will download and extract imaging data from the NDAR database. Originally cloned from [here](https://raw.githubusercontent.com/chaselgrove/ndar/master/ndar_unpack/ndar_unpack), but slightly modified to add untar-ing functionality.
-- sublist_build.py - Tempate subject list builder script which will query the IMAGE03 database table and pull down a range of image03_id's and their corresponding S3 path entries to build a subject list. This subject list can then be used to run ndar_act_run.py for ANTs cortical thickness processing.
+- act_sublist_build.py - Tempate subject list builder script which will query the IMAGE03 database table and pull down a range of image03_id's and their corresponding S3 path entries to build a subject list. This subject list can then be used to run ndar_act_run.py for ANTs cortical thickness processing.
+- ndar_cpac_sublist.py - Script which builds a C-PAC-compatible subject list from an NDAR DB instance.
 
 The OASIS template data files can be acquired from [Mindboggle](http://mindboggle.info) using this [link](http://mindboggle.info/data/templates/atropos/OASIS-30_Atropos_template.tar.gz) and this [link](http://mindboggle.info/data/atlases/jointfusion/OASIS-TRT-20_jointfusion_DKT31_CMA_labels_in_OASIS-30.nii.gz).
 
