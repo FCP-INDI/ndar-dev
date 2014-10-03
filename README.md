@@ -1,6 +1,8 @@
+ndar-dev
+========
 This repository contains the code used to preprocess data from the NDAR database and upload the results/log files to tables in the database.
 
-## Repository files
+## Contents
 - act_interface.py - Nipype interface made to work with the ANTs cortical thickness extraction script found [here](https://raw.githubusercontent.com/stnava/ANTs/master/Scripts/antsCorticalThickness.sh)
 - aws_walkthrough.md - Instructions on how to use AWS EC2 to launch and interact with a C-PAC AMI.
 - credentials_template.csv - A template for how the fetch_creds.py module expects in order to read in credentials and use them for python interfaces to various AWS services
