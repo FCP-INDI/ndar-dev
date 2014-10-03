@@ -7,7 +7,7 @@ This module contains functions which assist in building a CPAC-
 compatible subject list from a miNDAR database
 
 Usage:
-    python ndar_cpac_sublist.py <inputs_dir> <study_name> <creds_path>
+    python ndar_cpac_sublist.py <inputs_dir> <study_name> <creds_path> <sublist_yaml>
 '''
 
 # Get S3 image filepath
@@ -123,7 +123,7 @@ def run_ndar_unpack(s3_path, out_nii, aws_access_key_id,
                       'stdout: %s\n\nstderror: %s' % (stdout, stderr))
 
 # Main routine
-def main(inputs_dir, study_name, creds_path):
+def main(inputs_dir, study_name, creds_path, sublist_yaml):
     '''
     Function generally used for task-specific scripting of functions
     declared in this module
@@ -136,10 +136,12 @@ def main(inputs_dir, study_name, creds_path):
     study_name : string
         the name of the study/site that all of the subjects will be
         placed in
-    creds_path : string (filepath)
+    creds_path : string
         path to the csv file with 'Access Key Id' as the header and the
         corresponding ASCII text for the key underneath; same with the
         'Secret Access Key' string and ASCII text
+    sublist_yaml : string
+        filepath to output the subject list yaml file to
 
     Returns
     -------
@@ -179,6 +181,17 @@ def main(inputs_dir, study_name, creds_path):
             print 'Unable to make inputs directory %s' % inputs_dir
             print 'This might be due to permissions: %s' %e
             sys.exit()
+
+    # Test the yaml subject list file for errors
+    sublist_yaml = os.path.abspath(sublist_yaml)
+    if os.path.exists(sublist_yaml):
+        print '%s already exists, please specify a different path'
+        sys.exit()
+    elif os.access(os.path.dirname(sublist_yaml), os.W_OK):
+        print 'sublist will be written to %s' % sublist_yaml
+    else:
+        print 'cannot write to output directory for sublist %s, please '\
+              'specify a different path' % sublist_yaml
 
     # Get image aggregate results
     # IMAGE_AGGREGATE    --->       IMAGE03 columns          EXAMPLE
@@ -318,7 +331,7 @@ def main(inputs_dir, study_name, creds_path):
 
 
     # And write it to disk
-    with open('./test_list.yml','w') as f:
+    with open(sublist_yaml,'w') as f:
         f.write(yaml.dump(sublist))
 
     # Return the subject list
@@ -335,9 +348,10 @@ if __name__ == '__main__':
         inputs_dir = str(sys.argv[1])
         study_name = str(sys.argv[2])
         creds_path = str(sys.argv[3])
+        sublist_yaml = str(sys.argv[4])
     except IndexError as e:
         print 'Not enough input arguments, got IndexError: %s' % e
         print __doc__
 
     # Run main
-    sublist = main(inputs_dir, study_name, creds_path)
+    sublist = main(inputs_dir, study_name, creds_path, sublist_yaml)
