@@ -11,7 +11,7 @@ This repository contains the code used to preprocess data from the NDAR database
 - ndar_run.sge - Bash script to use to submit the ndar_act_cluster.py script in parallel over a cluster of nodes.
 - ndar_unpack - Bash-executable Python script which will download and extract imaging data from the NDAR database. Originally cloned from [here](https://raw.githubusercontent.com/chaselgrove/ndar/master/ndar_unpack/ndar_unpack), but slightly modified to add untar-ing functionality.
 - act_sublist_build.py - Template subject list builder script which will query the IMAGE03 database table and pull down a range of image03_id's and their corresponding S3 path entries to build a subject list. This subject list can then be used to run ndar_act_run.py for ANTs cortical thickness processing.
-- ndar_cpac_sublist.py - Script which builds a C-PAC-compatible subject list from an NDAR DB instance. To build a CPAC-compatible subject list from an miNDAR database, one must have the following in a csv file so that this script can interact with the AWS cloud-hosted database:
+- ndar_cpac_sublist.py - Script which builds a C-PAC-compatible subject list from an NDAR DB instance. For this script to work, one must have the following in a csv file so that this script can interact with the AWS cloud-hosted database:
     - Database username
     - Database password
     - Database host URL
