@@ -10,7 +10,7 @@ the subject list, such that subjects <min_id> through <max_id> (including
 both min and max) are used.
 
 Usage:
-    python sublist_build <min_id> <max_id> <creds_path> <out_fp>
+    python act_sublist_build.py <min_id> <max_id> <creds_path> <out_fp>
 '''
 
 # Main routine

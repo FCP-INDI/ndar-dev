@@ -10,8 +10,18 @@ This repository contains the code used to preprocess data from the NDAR database
 - ndar_act_run.py - Streamlined script to execute the nipype workflow from the interface defined in act_interface.py and then upload the results and log files to the NDAR database. This script is designed to be launched from a cluster of C-PAC AMI's on AWS using the Sun Grid Engine job scheduler.
 - ndar_run.sge - Bash script to use to submit the ndar_act_cluster.py script in parallel over a cluster of nodes.
 - ndar_unpack - Bash-executable Python script which will download and extract imaging data from the NDAR database. Originally cloned from [here](https://raw.githubusercontent.com/chaselgrove/ndar/master/ndar_unpack/ndar_unpack), but slightly modified to add untar-ing functionality.
-- act_sublist_build.py - Tempate subject list builder script which will query the IMAGE03 database table and pull down a range of image03_id's and their corresponding S3 path entries to build a subject list. This subject list can then be used to run ndar_act_run.py for ANTs cortical thickness processing.
-- ndar_cpac_sublist.py - Script which builds a C-PAC-compatible subject list from an NDAR DB instance.
+- act_sublist_build.py - Template subject list builder script which will query the IMAGE03 database table and pull down a range of image03_id's and their corresponding S3 path entries to build a subject list. This subject list can then be used to run ndar_act_run.py for ANTs cortical thickness processing.
+- ndar_cpac_sublist.py - Script which builds a C-PAC-compatible subject list from an NDAR DB instance. To build a CPAC-compatible subject list from an miNDAR database, one must have the following in a csv file so that this script can interact with the AWS cloud-hosted database:
+    - Database username
+    - Database password
+    - Database host URL
+    - Database port number
+    - database service id
+This information is given from the NDAR website when you launch a miNDAR instance from the miNDAR tab on NDAR's [cloud page](https://ndar.nih.gov/launch_cloud_db.html). To see a template of the csv file format, see the credentials_template.csv file in this repository. 
+
+Additionally, the miNDAR database instance must be launched so the user can connect to it (via an internet connection). This is also done on NDAR's [cloud page](https://ndar.nih.gov/launch_cloud_db.html). *Note* that the network ports of your internet connetion must allow communication through the database port number of the miNDAR instance (aka not firewalled).
+
+The rest of the arguments to this function are completely up to the user (see the ndar_cpac_sublist.py docstring for more info).
 
 The OASIS template data files can be acquired from [Mindboggle](http://mindboggle.info) using this [link](http://mindboggle.info/data/templates/atropos/OASIS-30_Atropos_template.tar.gz) and this [link](http://mindboggle.info/data/atlases/jointfusion/OASIS-TRT-20_jointfusion_DKT31_CMA_labels_in_OASIS-30.nii.gz).
 

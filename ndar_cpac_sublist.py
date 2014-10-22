@@ -352,6 +352,7 @@ if __name__ == '__main__':
     except IndexError as e:
         print 'Not enough input arguments, got IndexError: %s' % e
         print __doc__
+        sys.exit()
 
     # Run main
     sublist = main(inputs_dir, study_name, creds_path, sublist_yaml)
