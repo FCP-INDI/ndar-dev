@@ -16,10 +16,11 @@ This repository contains the code used to preprocess data from the NDAR database
     - Database password
     - Database host URL
     - Database port number
-    - database service id
+    - Database service id
+
 This information is given from the NDAR website when you launch a miNDAR instance from the miNDAR tab on NDAR's [cloud page](https://ndar.nih.gov/launch_cloud_db.html). To see a template of the csv file format, see the credentials_template.csv file in this repository. 
 
-Additionally, the miNDAR database instance must be launched so the user can connect to it (via an internet connection). This is also done on NDAR's [cloud page](https://ndar.nih.gov/launch_cloud_db.html). *Note* that the network ports of your internet connetion must allow communication through the database port number of the miNDAR instance (aka not firewalled).
+Additionally, the miNDAR database instance must be launched so the user can connect to it (via an internet connection). This is also done on NDAR's [cloud page](https://ndar.nih.gov/launch_cloud_db.html). *Note that the network ports of your internet connetion must allow communication through the database port number of the miNDAR instance (aka not firewalled).*
 
 The rest of the arguments to this function are completely up to the user (see the ndar_cpac_sublist.py docstring for more info).
 
