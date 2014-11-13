@@ -50,7 +50,7 @@ def main(min_id, max_id, creds_path, output_path):
     # Init variables
     cursor = fetch_creds.return_cursor(creds_path)
     cmd = '''
-          select image03_id, image_file from IMAGE03 
+          select image03_id, image_file from NITRC_IMAGE03
           where 
           image03_id >= :arg_1 and image03_id <= :arg_2
           '''
@@ -59,7 +59,7 @@ def main(min_id, max_id, creds_path, output_path):
     # Execute command
     cursor.execute(cmd, arg_1=min_id, arg_2=max_id)
     res = cursor.fetchall()
-    
+
     # And save result to yaml file
     with open(out_fp, 'w') as f:
         print 'Saving subject list to %s' % out_fp
