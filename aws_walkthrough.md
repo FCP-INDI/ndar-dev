@@ -59,10 +59,10 @@ miNDAR CPAC Walkthrough
     - Database service id
 4. Insert these values into a csv file in the format of the `credentials_template.csv` file that is included in this repository; save this csv file to a directory on your computer.
 5. Run `ndar_cpac_sublist.py <images_base_dir> <study_name> <creds_path> <output_sublist_path>`, where:
-    - <images_base_dir> is a local base folder on your computer where all of the downloaded images will  be stored and organized for input into CPAC, e.g. /path/to/inputs
-    - <study_name> is the name of the study that the data is associated with; this is just a string that the user can specify for convenience, and the images will be saved into this directory under <images_base_dir>, e.g. study_abc
-    - <creds_path> is the full path to the csv credentials file created in step 4, e.g. /path/to/creds.csv
-    - <output_sublist_path> is the full path to a yaml file on disk, e.g. /path/to/sublist.yml
+    - `<images_base_dir>` is a local base folder on your computer where all of the downloaded images will  be stored and organized for input into CPAC, e.g. /path/to/inputs
+    - `<study_name>` is the name of the study that the data is associated with; this is just a string that the user can specify for convenience, and the images will be saved into this directory under <images_base_dir>, e.g. study_abc
+    - `<creds_path>` is the full path to the csv credentials file created in step 4, e.g. /path/to/creds.csv
+    - `<output_sublist_path>` is the full path to a yaml file on disk, e.g. /path/to/sublist.yml
    This function should then query and download the images from the miNDAR database instance to the local computer, and extract them into a hierarchy that CPAC is compatible with, all under the <images_base_dir> directory. It will finally write the subject list to disk at <output_sublist_path>.
 6. Once this is done running successfully, open the CPAC GUI with: cpac_gui
 7. On the left-hand side of the main window, click the "Load" button under "Subject Lists."
