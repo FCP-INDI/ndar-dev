@@ -1,0 +1,11 @@
+#! /bin/bash
+#$ -cwd
+#$ -S /bin/bash
+#$ -V
+#$ -t 1-377
+#$ -q all.q
+#$ -pe mpi_smp 4
+#$ -e /data/ndar_run.err
+#$ -o /data/ndar_run.out
+source /etc/profile.d/cpac_env.sh
+python /data/ndar-dev/ndar_act_run.py /data/yamls/ef_ids_paths.yml $SGE_TASK_ID

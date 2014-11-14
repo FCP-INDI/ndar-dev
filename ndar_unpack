@@ -1,0 +1,1045 @@
+#!/usr/bin/python
+# See file COPYING distributed with ndar_unpack for copyright and license.
+
+import sys
+import os
+import traceback
+import errno
+import argparse
+import subprocess
+import re
+import tempfile
+import shutil
+import distutils.dir_util
+import zipfile
+import gzip
+import struct
+import json
+import dicom
+import boto.s3.connection
+
+version = 'ndar_unpack 0.1.2'
+
+# import nibabel if possible
+# and since we're just using nibabel for MINC2, consider the import 
+# unsuccessful if nibabel.Minc2Image doesn't exist
+try:
+    import nibabel
+    nibabel.Minc2Image
+except:
+    nibabel = None
+
+# SimpleITK for NRRD support
+try:
+    import SimpleITK
+except:
+    SimpleITK = None
+
+description = """
+
+ndar_unpack checks, describes, and unpacks imaging data from NDAR.
+
+There are three main functions:
+
+    Check: report whether the packaged data is sensible.  Is it just a header 
+           without volume data?  Is it not volume data at all?  This is the 
+           default action (if none others are given), but some describe and 
+           unpack functions require a data check.
+
+    Describe: derive as much of the image03 structure as possible from the 
+              data itself.
+
+    Unpack: create a volume of a given format or a thumbnail image from the 
+            data, or download or unzip the data.
+
+There are a number of outcomes from an ndar_unpack run.  Outcomes and their 
+exit values are:
+
+    Data is okay, and a successful ndar_unpack run.  Returns 0.
+
+    Error in running ndar_unpack.  This is when ndar_unpack could not run 
+    to completion for some reason, with the exception of the following 
+    cases.  Returns 1.
+
+    Command line error.  Mind your -ps and -qs.  Returns 2.
+
+    Bad data.  The data is bad.  Maybe it's empty; maybe it's in an 
+    unsupported format.  Returns 3.
+
+AWS keys can be specified in the environment as AWS_ACCESS_KEY_ID and 
+AWS_SECRET_ACCESS_KEY.
+
+Use ndar_unpack -S or ndar_unpack --self-check to check for programs used 
+by ndar_unpack.  These flags override other functions, and ndar_unpack will 
+exit immediately after running its checks, returning 0 if all programs are 
+found and 1 otherwise.
+
+Written by Christian Haselgrove, 2014.
+
+"""
+
+image03_fields = ('subjectkey', 'src_subject_id', 'interview_date', 
+                  'interview_age', 'gender', 'comments_misc', 'image_file', 
+                  'image_thumbnail_file', 'image_description', 
+                  'image_file_format', 'image_modality', 
+                  'scanner_manufacturer_pd', 'scanner_type_pd', 
+                  'scanner_software_versions_pd', 'magnetic_field_strength', 
+                  'mri_repetition_time_pd', 'mri_echo_time_pd', 'flip_angle', 
+                  'acquisition_matrix', 'mri_field_of_view_pd', 
+                  'patient_position', 'photomet_interpret', 'receive_coil', 
+                  'transmit_coil', 'transformation_performed', 
+                  'transformation_type', 'image_history', 
+                  'image_num_dimensions', 'image_extent1', 'image_extent2', 
+                  'image_extent3', 'image_extent4', 'extent4_type', 
+                  'image_extent5', 'extent5_type', 'image_unit1', 
+                  'image_unit2', 'image_unit3', 'image_unit4', 'image_unit5', 
+                  'image_resolution1', 'image_resolution2', 
+                  'image_resolution3', 'image_resolution4', 
+                  'image_resolution5', 'image_slice_thickness', 
+                  'image_orientation', 'qc_outcome', 'qc_description', 
+                  'qc_fail_quest_reason', 'time_diff_units', 
+                  'decay_correction', 'frame_end_times', 'frame_end_unit', 
+                  'frame_start_times', 'frame_start_unit', 'pet_isotope', 
+                  'pet_tracer', 'time_diff_inject_to_image', 'pulse_seq', 
+                  'slice_acquisition', 'software_preproc', 'experiment_id', 
+                  'scan_type', 'data_file2', 'data_file2_type')
+
+# order matters; see NIfTI_1.__init__()
+nifti_units_xyz = (('Meters', 1), 
+                   ('Millimeters', 2), 
+                   ('Micrometers', 3))
+
+# order matters; see NIfTI_1.__init__()
+nifti_units_t = (('Seconds', 8), 
+                 ('Milliseconds', 16), 
+                 ('Microseconds', 24))
+
+def convert_dicom_time(val):
+    return str(float(val)/1000.0)
+
+def convert_dicom_date(val):
+    mo = dicom_date_re.search(val)
+    if mo is None:
+        return None
+    return '%s/%s/%s' % (mo.groupdict['month'], 
+                         mo.groupdict['day'], 
+                         mo.groupdict['year'])
+
+def convert_dicom_float(val):
+    if not isinstance(val, dicom.valuerep.DSfloat):
+        return None
+    return float(val)
+
+dicom_date_re = re.compile('^(P<year>\d\d\d\d)(P<month>\d\d)(P<day>\d\d)$')
+
+# image03 field => (DICOM tag, formatting/conversion function)
+image03_dicom = {'gender': ('PatientSex', None), 
+                 'image_modality': ('Modality', None), 
+                 'scanner_manufacturer_pd': ('Manufacturer', None), 
+                 'scanner_type_pd': ('ManufacturerModelName', None), 
+                 'magnetic_field_strength': ('MagneticFieldStrength', 
+                                             convert_dicom_float),  
+                 'flip_angle': ('FlipAngle', convert_dicom_float), 
+                 'acquisition_matrix': ('AcquisitionMatrix', None), 
+                 'patient_position': ('PatientPosition', None), 
+                 'photomet_interpret': ('PhotometricInterpretation', None), 
+                 'receive_coil': ('ReceiveCoilName', None), 
+                 'transmit_coil': ('TransmitCoilName', None), 
+                 'interview_date': ('StudyDate', convert_dicom_date), 
+                 'mri_repetition_time_pd': ('RepititionTime', 
+                                            convert_dicom_time),
+                 'mri_echo_time_pd': ('EchoTime', convert_dicom_time)}
+
+def find_data_handler(tempdir):
+
+    """attempt to find a class (BaseData subclass) that can handle the data"""
+
+    # each class constructor will raise TypeError if it won't handle the data 
+    # and DataError if it finds an error in the data, so hidden in this loop 
+    # is also data checking
+
+    message(NOTICE, 'inspecting data...')
+    data = None
+    for data_class in (NIfTIGzData, 
+                       NIfTIData, 
+                       AFNIData, 
+                       MINCData, 
+                       MINC2Data, 
+                       NRRDData, 
+                       DICOMData):
+        try:
+            message(DEBUG, 'trying %s' % str(data_class))
+            data = data_class(tempdir)
+        except TypeError, exc:
+            message(DEBUG, 'class complains: %s' % str(exc))
+            continue
+    if not data:
+        raise DataError('unrecognized data format')
+    message(DEBUG, 'class %s accepted the data' % str(data.__class__))
+
+    return data
+
+SILENT = 0
+ERROR = 1
+NOTICE = 2
+DEBUG = 3
+
+#############################################################################
+# exceptions
+#
+
+class BaseError(Exception):
+
+    """base class for exceptions"""
+
+    def __init__(self, error):
+        self.error = error
+
+    def __str__(self):
+        return self.error
+
+class DataError(BaseError):
+
+    """error in the data"""
+
+    def __str__(self):
+        return 'bad data: %s' % self.error
+
+class GeneralError(BaseError):
+
+    """error running"""
+
+#############################################################################
+# classes
+#
+
+class NIfTI_1:
+
+    """NIfTI-1 volume"""
+
+    def __init__(self, fname):
+
+        # read the header and check its length and the magic string
+        if fname.endswith('.gz'):
+            header_bytes = gzip.open(fname).read(348)
+        else:
+            header_bytes = open(fname).read(348)
+        if len(header_bytes) < 348:
+            raise ValueError('header too short in NIfTI-1 file')
+        self.magic = header_bytes[344:]
+        if self.magic != 'n+1\0':
+            raise ValueError('bad magic string in NIfTI-1 file')
+
+        # determine the byte ordering
+        bo = '<'
+        dim0 = struct.unpack('<h', header_bytes[40:42])[0]
+        if dim0 < 1 or dim0 > 7:
+            bo = '>'
+            dim0 = struct.unpack('>h', header_bytes[40:42])[0]
+            if dim0 < 1 or dim0 > 7:
+                raise ValueError('couldn\'t determine byte ordering')
+        self.sizeof_hdr = struct.unpack('%si' % bo, header_bytes[:4])[0]
+        if self.sizeof_hdr != 348:
+            raise ValueError('couldn\'t determine byte ordering')
+
+        # unpack the header
+        self.dim = struct.unpack('%s8h' % bo, header_bytes[40:56])
+        self.datatype = struct.unpack('%sh' % bo, header_bytes[70:72])[0]
+        self.bitpix = struct.unpack('%sh' % bo, header_bytes[72:74])[0]
+        self.pixdim = struct.unpack('%s8f' % bo, header_bytes[76:108])
+        self.vox_offset = struct.unpack('%sf' % bo, header_bytes[108:112])[0]
+        self.xyzt_units = struct.unpack('%sB' % bo, header_bytes[123:124])[0]
+
+        # order matters here; xyzt_units = 3 will match both Meters (1) and 
+        # Micrometers (3), so we go from less to more specific
+        self.xyz_units = None
+        for (name, value) in nifti_units_xyz:
+            if self.xyzt_units & value == value:
+                self.xyz_units = name
+
+        # again, order matters and we go from less to more specific
+        self.t_units = None
+        for (name, value) in nifti_units_t:
+            if self.xyzt_units & value == value:
+                self.t_units = name
+
+        return
+
+class BaseData:
+
+    """base class for data handling classes
+
+    Subclasses should define:
+
+        @property image03(), which returns a dictionary containing the 
+        image03 structure
+
+        nii_gz(), which creates a .nii.gz.  If a file name is specified, 
+        the NIfTI volume should be written to that file; otherwise a 
+        temporary file should be created.  Returns the file name.
+
+        header(), which returns a string containing the header information (in 
+        an arbitrary format).
+
+    Each subclass should define __init__() such that it returns only if 
+    it is prepared to handle the data in the passed temporary directory.  
+    If the class rejects the data (e.g. a DICOM handler recieves a NIfTI 
+    file), __init__() should raise TypeError; if the class accepts the 
+    data but finds an error (e.g. a DICOM handler finds more than one 
+    series), __init__() should raise DataError.
+    """
+
+    def __init__(self, tempdir):
+        self.tempdir = tempdir
+        self.contents = []
+        self.unpacked_dir = os.path.join(self.tempdir, 'unpacked')
+        for (dir, dirs, files) in os.walk(self.unpacked_dir):
+            for f in files:
+                self.contents.append(os.path.join(dir, f))
+        # a serial number for process output
+        self.process_index = 0
+        self._image03 = None
+        return
+
+    def _image03_from_nifti(self):
+        """fill as much of the image03 structure as possible from the NIfTI 
+        volume
+
+        this also initializes _image03 with the known fields
+        """
+
+        self._image03 = {}
+        for field in image03_fields:
+            self._image03[field] = None
+
+        vol = NIfTI_1(self.nii_gz())
+
+        self._image03['image_num_dimensions'] = vol.dim[0]
+
+        for i in xrange(1, vol.dim[0]+1):
+            self._image03['image_extent%d' % i] = vol.dim[i]
+            self._image03['image_resolution%d' % i] = vol.pixdim[i]
+            if i < 4 and vol.xyz_units:
+                self._image03['image_unit%d' % i] = vol.xyz_units
+            if i == 4 and vol.t_units:
+                self._image03['image_unit4'] = vol.t_units
+
+        return self._image03
+
+    def stdout_fname(self):
+        return os.path.join(os.path.join(self.tempdir, 'output'), 
+                            '%d.out' % self.process_index)
+
+    def stderr_fname(self):
+        return os.path.join(os.path.join(self.tempdir, 'output'), 
+                            '%d.err' % self.process_index)
+
+    def call(self, args):
+        message(DEBUG, 'running (%d) %s' % (self.process_index, ' '.join(args)))
+        stdout_f = None
+        stderr_f = None
+        self.process_index += 1
+        stdout_fname = self.stdout_fname()
+        stderr_fname = self.stderr_fname()
+        try:
+            stdout_f = open(stdout_fname, 'w')
+            stderr_f = open(stderr_fname, 'w')
+            rv = subprocess.call(args, stdout=stdout_f, stderr=stderr_f)
+        except OSError, exc:
+            # ENOENT if the program couldn't be found
+            if exc.errno == errno.ENOENT:
+                msg = 'couldn\'t find %s' % args[0]
+            else:
+                msg = str(exc)
+            raise GeneralError(msg)
+        finally:
+            if stdout_f:
+                stdout_f.close()
+            if stderr_f:
+                stderr_f.close()
+        if rv < 0:
+            raise GeneralError('%s killed by signal %d' % (args[0], -rv))
+        if args[0] == 'mri_convert':
+            stderr = open(stderr_fname).read()
+            if 'ERROR: FreeSurfer license file' in stderr:
+                raise GeneralError('FreeSurfer license not found')
+        return rv
+
+    def check_call(self, args):
+        rv = self.call(args)
+        if rv:
+            raise GeneralError('error running %s' % args[0])
+        return
+
+class NIfTIGzData(BaseData):
+
+    def __init__(self, tempdir):
+        BaseData.__init__(self, tempdir)
+        if not self.contents:
+            raise TypeError('no files')
+        if len(self.contents) != 1:
+            raise TypeError('too many files')
+        if not self.contents[0].endswith('.nii.gz'):
+            raise TypeError('bad extension')
+        rv = self.call(['mri_convert', '-ro', self.contents[0]])
+        if rv:
+            raise DataError('could not read .nii.gz')
+        return
+
+    @property
+    def image03(self):
+        if self._image03:
+            return self._image03
+        self._image03_from_nifti()
+        self._image03['image_file_format'] = 'NIfTI'
+        return self._image03
+
+    def nii_gz(self, path=None):
+        if not path:
+            return self.contents[0]
+        shutil.copy(self.contents[0], path)
+        return path
+
+    def header(self):
+        args = ['nifti_tool', '-disp_hdr', '-infiles', self.contents[0]]
+        self.check_call(args)
+        return open(self.stdout_fname()).read()
+
+class NIfTIData(BaseData):
+
+    def __init__(self, tempdir):
+        BaseData.__init__(self, tempdir)
+        if not self.contents:
+            raise TypeError('no files')
+        if len(self.contents) != 1:
+            raise TypeError('too many files')
+        if not self.contents[0].endswith('.nii'):
+            raise TypeError('bad extension')
+        rv = self.call(['mri_convert', '-ro', self.contents[0]])
+        if rv:
+            raise DataError('could not read .nii')
+        return
+
+    @property
+    def image03(self):
+        if self._image03:
+            return self._image03
+        self._image03_from_nifti()
+        self._image03['image_file_format'] = 'NIfTI'
+        return self._image03
+
+    def nii_gz(self, path=None):
+        if not path:
+            path = os.path.join(self.tempdir, 'volume.nii.gz')
+        self.check_call(['mri_convert', self.contents[0], path])
+        return path
+
+    def header(self):
+        args = ['nifti_tool', '-disp_hdr', '-infiles', self.contents[0]]
+        self.check_call(args)
+        return open(self.stdout_fname()).read()
+
+class AFNIData(BaseData):
+
+    def __init__(self, tempdir):
+        BaseData.__init__(self, tempdir)
+        if not self.contents:
+            raise TypeError('no files')
+        if len(self.contents) != 2:
+            raise TypeError('wrong number of files')
+        base = os.path.commonprefix(self.contents)
+        if not base:
+            raise TypeError('no common prefix')
+        if not base.endswith('.'):
+            raise TypeError('common prefix does not end with "."')
+        self.head = '%sHEAD' % base
+        self.brik = '%sBRIK' % base
+        if self.head not in self.contents or self.brik not in self.contents:
+            raise TypeError('not a HEAD/BRIK pair')
+        rv = self.call(['mri_convert', '-ro', self.brik])
+        if rv:
+            raise DataError('could not read .BRIK')
+        return
+
+    @property
+    def image03(self):
+        if self._image03:
+            return self._image03
+        self._image03_from_nifti()
+        self._image03['image_file_format'] = 'AFNI'
+        return self._image03
+
+    def nii_gz(self, path=None):
+        if not path:
+            path = os.path.join(self.tempdir, 'volume.nii.gz')
+        self.check_call(['mri_convert', self.brik, path])
+        return path
+
+    def header(self):
+        return open(self.head).read()
+
+class MINCData(BaseData):
+
+    def __init__(self, tempdir):
+        BaseData.__init__(self, tempdir)
+        if not self.contents:
+            raise TypeError('no files')
+        if len(self.contents) > 1:
+            raise TypeError('too many files')
+        if not self.contents[0].endswith('.mnc'):
+            raise TypeError('bad extension')
+        # since both MINC and MINC2 use .mnc, we also check the NetCDF magic 
+        # number here
+        if open(self.contents[0]).read(3) == 'CDF':
+            rv = self.call(['mri_convert', '-ro', self.contents[0]])
+        else:
+            rv = self.call(['mnc2nii', '-nii', self.contents[0]])
+        if rv:
+            raise DataError('could not read .mnc')
+        return
+
+    @property
+    def image03(self):
+        if self._image03:
+            return self._image03
+        self._image03_from_nifti()
+        self._image03['image_file_format'] = 'MINC'
+        return self._image03
+
+    def nii_gz(self, path=None):
+        if not path:
+            path = os.path.join(self.tempdir, 'volume.nii.gz')
+        try:
+            self.check_call(['mri_convert', self.contents[0], path])
+        except:
+            self.check_call(['mnc2nii', '-nii', self.contents[0], path])
+        return path
+
+    def header(self):
+        self.check_call(['mincheader', self.contents[0]])
+        return open(self.stdout_fname()).read()
+
+class MINC2Data(BaseData):
+
+    def __init__(self, tempdir):
+        BaseData.__init__(self, tempdir)
+        if not nibabel:
+            raise TypeError('MINC2 unsupported')
+        if not self.contents:
+            raise TypeError('no files')
+        if len(self.contents) > 1:
+            raise TypeError('too many files')
+        if not self.contents[0].endswith('.mnc'):
+            raise TypeError('bad extension')
+        try:
+            self.im = nibabel.load(self.contents[0])
+        except:
+            raise TypeError('could not read .mnc')
+        if not isinstance(self.im, nibabel.Minc2Image):
+            raise TypeError('not MINC2')
+        return
+
+    @property
+    def image03(self):
+        if self._image03:
+            return self._image03
+        self._image03_from_nifti()
+        self._image03['image_file_format'] = 'MINC'
+        return self._image03
+
+    def nii_gz(self, path=None):
+        if not path:
+            path = os.path.join(self.tempdir, 'volume.nii.gz')
+        nibabel.save(self.im, path)
+        return path
+
+    def header(self):
+        data = 'data_layout: %s\n' % self.im.header.data_layout
+        data += 'default_x_flip: %s\n' % self.im.header.default_x_flip
+        data += 'dtype: %s\n' % str(self.im.header.get_data_dtype())
+        data += 'shape: %s\n' % str(self.im.header.get_data_shape())
+        data += 'zooms: %s\n' % str(self.im.header.get_zooms())
+        data += 'base affine:\n'
+        data += str(self.im.header.get_base_affine())
+        data += '\n'
+        data += 'best affine:\n'
+        data += str(self.im.header.get_best_affine())
+        data += '\n'
+        return data
+
+class NRRDData(BaseData):
+
+    def __init__(self, tempdir):
+        BaseData.__init__(self, tempdir)
+        if not SimpleITK:
+            raise TypeError('NRRD unsupported')
+        if not self.contents:
+            raise TypeError('no files')
+        if len(self.contents) > 1:
+            raise TypeError('too many files')
+        if not self.contents[0].endswith('.nrrd'):
+            raise TypeError('bad extension')
+        try:
+            self.im = SimpleITK.ReadImage(self.contents[0])
+        except:
+            raise TypeError('could not read .nrrd')
+        return
+
+    @property
+    def image03(self):
+        if self._image03:
+            return self._image03
+        self._image03_from_nifti()
+        self._image03['image_file_format'] = 'MINC'
+        return self._image03
+
+    def nii_gz(self, path=None):
+        if not path:
+            path = os.path.join(self.tempdir, 'volume.nii.gz')
+        SimpleITK.WriteImage(self.im, path)
+        return path
+
+    def header(self):
+        data = 'dimension: %s\n' % str(self.im.GetDimension())
+        data += 'size: %s\n' % str(self.im.GetSize())
+        data += 'spacing: %s\n' % str(self.im.GetSpacing())
+        data += 'origin: %s\n' % str(self.im.GetOrigin())
+        data += 'direction: %s\n' % str(self.im.GetDirection())
+        cpp = str(self.im.GetNumberOfComponentsPerPixel())
+        data += 'components per pixel: %s\n' % cpp
+        data += 'metadata:\n'
+        for key in self.im.GetMetaDataKeys():
+            data += '    %s = %s\n' % (key, str(self.im.GetMetaData(key)))
+        return data
+
+class DICOMData(BaseData):
+
+    def __init__(self, tempdir):
+        BaseData.__init__(self, tempdir)
+        if not self.contents:
+            raise TypeError('no files')
+        series_uids = []
+        for f in self.contents:
+            try:
+                do = dicom.read_file(f)
+            except:
+                raise TypeError('non-DICOM found')
+            try:
+                uid = str(do.SeriesInstanceUID)
+            except AttributeError:
+                raise DataError('DICOM file without Series Instance UID')
+            if not uid:
+                # Create dummy uid for the purpose of extracting the file
+                uid = '001'
+                #raise DataError('DICOM file with empty Series Instance UID')
+            if uid not in series_uids:
+                series_uids.append(uid)
+        if len(series_uids) > 1:
+            raise DataError('multiple series found')
+        return
+
+    @property
+    def image03(self):
+        if self._image03:
+            return self._image03
+        self._image03_from_nifti()
+        do = dicom.read_file(self.contents[0])
+        for (field, (tag, converter)) in image03_dicom.iteritems():
+            try:
+                value = getattr(do, tag)
+                if not value:
+                    value = None
+                elif converter is not None:
+                    value = converter(value)
+                self._image03[field] = value
+            except AttributeError:
+                pass
+        self._image03['image_file_format'] = 'DICOM'
+        return self._image03
+
+    def nii_gz(self, path=None):
+        if not path:
+            path = os.path.join(self.tempdir, 'volume.nii.gz')
+        self.check_call(['mri_convert', self.contents[0], path])
+        return path
+
+    def header(self):
+        do = dicom.read_file(self.contents[0])
+        return '%s\n' % str(do)
+
+#############################################################################
+# functions
+#
+
+def message(level, msg):
+    fo = sys.stdout
+    if level > output_level:
+        return
+    if level == DEBUG:
+        prefix = 'DEBUG: '
+    elif level == ERROR:
+        fo = sys.stderr
+        prefix = '%s: ' % progname
+    else:
+        prefix = ''
+    for line in msg.split('\n'):
+        fo.write('%s%s\n' % (prefix, line))
+    return
+
+#############################################################################
+# command line parsing
+#
+
+progname = os.path.basename(sys.argv[0])
+
+parser = argparse.ArgumentParser(description=description, 
+                                 formatter_class=argparse.RawTextHelpFormatter)
+
+parser.add_argument('--self-check', '-S', 
+                    default=False, 
+                    dest='self_check_flag', 
+                    action='store_true', 
+                    help='run self check')
+parser.add_argument('--version', 
+                    default=False, 
+                    dest='version_flag', 
+                    action='store_true', 
+                    help='print version and exit')
+parser.add_argument('--download', '-d', 
+                    dest='download_dir', 
+                    metavar='<directory>', 
+                    help='copy the source file')
+parser.add_argument('--unpack', '-u', 
+                    dest='unpack_dir', 
+                    metavar='<directory>', 
+                    help='unpack the source file')
+parser.add_argument('--header', '-H')
+parser.add_argument('--volume', '-v', 
+                    metavar='<output volume>', 
+                    action='append')
+parser.add_argument('--thumbnail', '-t')
+parser.add_argument('--image03', '-i')
+parser.add_argument('--format', '-f', 
+                    default='text', 
+                    help='image03 output format', 
+                    choices=('text', 'json'))
+parser.add_argument('--contents', '-c')
+parser.add_argument('--aws-access-key-id', 
+                    default=os.environ.get('AWS_ACCESS_KEY_ID'))
+parser.add_argument('--aws-secret-access-key', 
+                    default=os.environ.get('AWS_SECRET_ACCESS_KEY'))
+parser.add_argument('--debug', '-D', 
+                    default=False, 
+                    dest='debug_flag', 
+                    action='store_true', 
+                    help='debug flag; overrides -q')
+parser.add_argument('--dont-clean', 
+                    default=True, 
+                    dest='clean_flag', 
+                    action='store_false', 
+                    help='don\'t remove the temporary directory on exit')
+parser.add_argument('--quiet', '-q', 
+                    default=0, 
+                    action='count', 
+                    help='quiet flag; set twice for no output')
+parser.add_argument('input', 
+                    nargs='?', 
+                    help='the input file or S3 URL')
+
+args = parser.parse_args()
+
+#############################################################################
+# command line/input checks
+#
+
+output_level = NOTICE
+if args.debug_flag:
+    output_level = DEBUG
+elif args.quiet:
+    if args.quiet == 1:
+        output_level = ERROR
+    else:
+        output_level = SILENT
+
+if args.version_flag:
+    print version
+    sys.exit(0)
+
+if args.self_check_flag:
+    dev_null = open('/dev/null', 'w')
+    ev = 0
+    # (program name, ndar_unpack functionality)
+    programs = (('mri_convert', 'most functions'), 
+                ('fslreorient2std', 'thumbnail generation'), 
+                ('slicer', 'thumbnail generation'), 
+                ('nifti_tool', 'NIfTI header dumping'), 
+                ('mincheader', 'MINC header dumping'))
+    for (pn, fct) in programs:
+        try:
+            subprocess.call([pn], stdout=dev_null, stderr=subprocess.STDOUT)
+        except:
+            message(NOTICE, '%s not found: %s will fail' % (pn, fct))
+            ev = 1
+        else:
+            message(NOTICE, '%s okay' % pn)
+    if not nibabel:
+        message(NOTICE, 'nibabel.Minc2Image not found: MINC2 reading will fail')
+        ev = 1
+    else:
+        message(NOTICE, 'nibabel.Minc2Image okay')
+    if not SimpleITK:
+        message(NOTICE, 'SimpleITK not found: NRRD reading will fail')
+        ev = 1
+    else:
+        message(NOTICE, 'SimpleITK okay')
+    sys.exit(ev)
+
+# we allow --self-check and --version to override the need for a positional 
+# argument; since we can't have argparse require the argument, we have to 
+# check for that explicitly here
+if args.input is None:
+    parser.print_usage(sys.stderr)
+    msg = '%s: error: too few arguments\n' % os.path.basename(sys.argv[0])
+    sys.stderr.write(msg)
+    sys.exit(2)
+
+errors = []
+
+if args.volume:
+    for fname in args.volume:
+        if os.path.exists(fname):
+            errors.append('%s exists' % fname)
+        else:
+            if not fname.endswith('.nii.gz'):
+                errors.append('unknown extension for volume %s' % fname)
+
+if args.thumbnail and os.path.exists(args.thumbnail):
+    errors.append('%s exists' % args.thumbnail)
+
+if args.image03 and args.image03 != '-' and os.path.exists(args.image03):
+    errors.append('%s exists' % args.image03)
+
+if args.contents and args.contents != '-' and os.path.exists(args.contents):
+    errors.append('%s exists' % args.contents)
+
+if args.header and args.header != '-' and os.path.exists(args.header):
+    errors.append('%s exists' % args.header)
+
+if args.input.startswith('s3://'):
+    if not args.aws_access_key_id:
+        errors.append('input is from S3 but no AWS access key ID given')
+    if not args.aws_secret_access_key:
+        errors.append('input is from S3 but no AWS secret access key given')
+
+if args.download_dir and not os.path.isdir(args.download_dir):
+    errors.append('%s: not a directory' % args.download_dir)
+
+if args.unpack_dir and not os.path.isdir(args.unpack_dir):
+    errors.append('%s: not a directory' % args.unpack_dir)
+
+if errors:
+    for e in errors:
+        message(ERROR, e)
+    sys.exit(1)
+
+#############################################################################
+# begin execution
+#
+
+try:
+
+    tempdir = tempfile.mkdtemp()
+    source_dir = os.path.join(tempdir, 'source')
+    unpacked_dir = os.path.join(tempdir, 'unpacked')
+    output_dir = os.path.join(tempdir, 'output')
+    os.mkdir(source_dir)
+    os.mkdir(unpacked_dir)
+    os.mkdir(output_dir)
+
+    source_basename = os.path.basename(args.input)
+    temp_source = os.path.join(source_dir, source_basename)
+
+    if args.input.startswith('s3://'):
+        try:
+            message(NOTICE, 'downloading data...')
+            parts = args.input[5:].split('/', 1)
+            # s3://bucket or s3://bucket/
+            if len(parts) == 1 or not parts[1]:
+                raise GeneralError('incomplete S3 URL')
+            (bucket, path) = parts
+            cf = boto.s3.connection.OrdinaryCallingFormat()
+            conn = boto.connect_s3(args.aws_access_key_id, 
+                                   args.aws_secret_access_key, 
+                                   calling_format=cf)
+            message(DEBUG, 'getting S3 bucket %s' % bucket)
+            b = conn.get_bucket(bucket)
+            message(DEBUG, 'looking for S3 object %s' % path)
+            k = b.get_key(path)
+            if not k:
+                raise GeneralError('%s not found' % args.input)
+            message(DEBUG, 'downloading S3 object to %s' % temp_source)
+            k.get_contents_to_filename(temp_source)
+            k.close()
+            conn.close()
+        except boto.exception.S3ResponseError, exc:
+            raise GeneralError('S3 error: %s' % exc.message)
+    else:
+        message(DEBUG, 'linking source to %s' % temp_source)
+        os.symlink(os.path.abspath(args.input), temp_source)
+
+    if args.input.endswith('.zip'):
+        message(NOTICE, 'unpacking ZIP file...')
+        try:
+            zf = zipfile.ZipFile(temp_source)
+            zf.extractall(unpacked_dir)
+            zf.close()
+        except zipfile.BadZipfile:
+            raise DataError('error in zip file')
+    elif 'tar' in args.input:
+        import tarfile
+        message(NOTICE, 'unpacking tar file...')
+        try:
+            tf = tarfile.open(temp_source,'r')
+            for item in tf:
+                tf.extract(item,unpacked_dir)
+        except:
+            raise DataError('error in tar file')
+    else:
+        message(DEBUG, 'linking source to unpacked/')
+        os.symlink(temp_source, os.path.join(unpacked_dir, source_basename))
+
+    if args.download_dir:
+        message(NOTICE, 'copying source to %s...' % args.download_dir)
+        shutil.copy(temp_source, args.download_dir)
+
+    if args.unpack_dir:
+        message(NOTICE, 'copying unpacked data to %s...' % args.unpack_dir)
+        distutils.dir_util.copy_tree(unpacked_dir, args.unpack_dir, verbose=0)
+
+    if args.contents:
+        if args.contents == '-':
+            fo = sys.stdout
+        else:
+            message(NOTICE, 'writing contents to %s...' % args.contents)
+            fo = open(args.contents, 'w')
+        try:
+            # traverse the directory tree under the unpacked directory
+            # relpath is the path relative to this directory (so relative 
+            # to the root of the zip file)
+            # normpath will remove the leading './' that will appear in 
+            # top-level entries
+            for (dirpath, dirnames, filenames) in os.walk(unpacked_dir):
+                relpath = os.path.relpath(unpacked_dir, dirpath)
+                for dname in dirnames:
+                    path = os.path.normpath(os.path.join(relpath, dname))
+                    fo.write('%s/\n' % path)
+                for fname in filenames:
+                    path = os.path.normpath(os.path.join(relpath, fname))
+                    fo.write('%s\n' % path)
+        finally:
+            if fo is not sys.stdout:
+                fo.close()
+
+    data = None
+
+    if args.header:
+        if not data:
+            data = find_data_handler(tempdir)
+        if args.header == '-':
+            fo = sys.stdout
+        else:
+            message(NOTICE, 'writing header to %s...' % args.header)
+            fo = open(args.header, 'w')
+        try:
+            fo.write(data.header())
+        finally:
+            if fo is not sys.stdout:
+                fo.close()
+
+    if args.volume:
+        if not data:
+            data = find_data_handler(tempdir)
+        for fname in args.volume:
+            message(NOTICE, 'creating %s...' % fname)
+            if fname.endswith('.nii.gz'):
+                data.nii_gz(fname)
+
+    if args.thumbnail:
+        if not data:
+            data = find_data_handler(tempdir)
+        message(NOTICE, 'creating %s...' % args.thumbnail)
+        vol_r = os.path.join(tempdir, 'vol_r.nii.gz')
+        data.check_call(['fslreorient2std', data.nii_gz(), vol_r])
+        data.check_call(['slicer', vol_r, '-a', args.thumbnail])
+
+    if args.image03:
+        if not data:
+            data = find_data_handler(tempdir)
+        if args.image03 == '-':
+            fo = sys.stdout
+        else:
+            message(NOTICE, 'writing image03 to %s...' % args.image03)
+            fo = open(args.image03, 'w')
+        try:
+            if args.format == 'text':
+                max_width = max([ len(f) for f in image03_fields ])
+                for field in image03_fields:
+                    val = data.image03[field]
+                    if val is None:
+                        str_val = ''
+                    else:
+                        str_val = str(val)
+                    fo.write('%s = %s\n' % (field.ljust(max_width), str_val))
+            else:
+                json.dump(data.image03, fo)
+                fo.write('\n')
+        finally:
+            if fo is not sys.stdout:
+                fo.close()
+
+    # print a message if no other actions were taken
+    if not args.volume \
+       and not args.thumbnail \
+       and not args.image03 \
+       and not args.header \
+       and not args.download_dir \
+       and not args.unpack_dir \
+       and not args.contents:
+        if not data:
+            data = find_data_handler(tempdir)
+        message(NOTICE, 'data okay')
+
+    if not data:
+        message(NOTICE, 'data was not checked')
+
+except Exception, exc:
+
+    if isinstance(exc, DataError):
+        ev = 3
+    else:
+        ev = 1
+
+    if args.debug_flag:
+        message(DEBUG, traceback.format_exc(exc))
+    else:
+        message(ERROR, str(exc))
+
+    sys.exit(ev)
+
+except KeyboardInterrupt:
+
+    message(ERROR, 'caught keyboard interrupt, exiting')
+    sys.exit(1)
+
+finally:
+
+    if args.clean_flag:
+        message(DEBUG, 'removing temporary directory %s' % tempdir)
+        shutil.rmtree(tempdir)
+    else:
+        message(NOTICE, 'leaving temporary directory %s' % tempdir)
+
+sys.exit(0)
+
+# eof
+
