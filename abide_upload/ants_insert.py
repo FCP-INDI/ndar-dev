@@ -36,7 +36,7 @@ def insert_unormd(roi_txt_fpaths, creds_path, oasis_file):
     # Import packages
     import cx_Oracle
     import datetime
-    import pytools
+    import fetch_creds
     import os
 
     # Init variables
@@ -71,7 +71,7 @@ def insert_unormd(roi_txt_fpaths, creds_path, oasis_file):
             roi_dic[key] = val
 
     # User and database info
-    cursor = pytools.fetch_creds.return_cursor(creds_path)
+    cursor = fetch_creds.return_cursor(creds_path)
 
     # Constant arguments for all entries
     atlas_name = 'OASIS-TRT-20_jointfusion_DKT31_CMA_labels_in_OASIS-30.nii.gz'
@@ -179,13 +179,13 @@ def insert_img_unormd(id_s3_list, creds_path):
     # Import packages
     import cx_Oracle
     import datetime
-    import pytools
+    import fetch_creds
     import os
     import yaml
 
     # Init variables
     # Create cursor for queries and data inserts
-    cursor = pytools.fetch_creds.return_cursor(creds_path)
+    cursor = fetch_creds.return_cursor(creds_path)
 
     # Constant arguments for all entries
     pipeline_name = 'act_workflow.py'
@@ -362,12 +362,12 @@ def transfer_table_entries(creds_path):
 
     # Import packages
     import insert_utils
-    import pytools
+    import fetch_creds
 
     # Init variables
     deriv_id = insert_utils.return_next_pk(cursor, 'ABIDE_IMG_RESULTS')
     template = 'OASIS-30 Atropos Template'
-    cursor = pytools.fetch_creds.return_cursor(creds_path)
+    cursor = fetch_creds.return_cursor(creds_path)
     # Get ACT img derivatives from img_derivatives_unormd
     imgs_get = '''
                select
