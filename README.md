@@ -46,3 +46,4 @@ Software dependencies:
 - [FSL](http://fsl.fmrib.ox.ac.uk/fsl/fslwiki/) - A comprehensive library of analysis tools for FMRI, MRI and DTI brain imaging data.
 - [minc-tools](https://github.com/BIC-MNI/minc-tools/) - Package of utilities that work on MINC format images.
 - [Oracle Instant Client](http://www.oracle.com/technetwork/database/features/instant-client/index-097480.html) - A set of tools to interact with Oracle databases. Only the basic-lite, sdk, and sql packages need to be installed.
+- [SQLAlchemy](http://www.sqlalchemy.org/) - Python SQL toolkit and Object Relational Mapper that gives application developers the full power and flexibility of SQL.

@@ -161,3 +161,40 @@ def return_cursor(creds_path):
 
     # Return cursor
     return cursor
+
+
+# Return sqlalchemy engine
+def sql_alchemy_engine(creds_path):
+    '''
+    Method to return a sqlalchemy engine that provides connectivity to
+    an oracle database
+
+    Parameters
+    ----------
+    creds_path : string (filepath)
+        path to the csv file with 'DB_USER' as the header and the
+        corresponding ASCII text for the user name underneath; same
+        'DB_PASSWD', 'DB_HOST', 'DB_PORT', and 'DB_SID'headers and text
+
+    Returns
+    -------
+    engine : sqlalchemy.engine.Engine object
+        the database connection engine that allows users to interact
+        with the database
+    '''
+
+   # Import packages
+   import sqlalchemy
+
+   # Init variables
+   user, passwd, host, port, sid = return_rds_vars(creds_path)
+
+   # Create engine string
+   engine_str = 'oracle+cx_oracle://' + ':'.join([user, passwd]) + \
+           '@' + host + '/' + sid
+
+   # Create the engine
+   engine = sqlalchemy.create_engine(engine_str)
+
+   # Return it
+   return engine
