@@ -183,18 +183,18 @@ def sql_alchemy_engine(creds_path):
         with the database
     '''
 
-   # Import packages
-   import sqlalchemy
+    # Import packages
+    import sqlalchemy
 
-   # Init variables
-   user, passwd, host, port, sid = return_rds_vars(creds_path)
+    # Init variables
+    user, passwd, host, port, sid = return_rds_vars(creds_path)
 
-   # Create engine string
-   engine_str = 'oracle+cx_oracle://' + ':'.join([user, passwd]) + \
-           '@' + host + '/' + sid
+    # Create engine string
+    engine_str = 'oracle+cx_oracle://' + ':'.join([user, passwd]) + \
+        '@' + host + '/' + sid
 
-   # Create the engine
-   engine = sqlalchemy.create_engine(engine_str)
+    # Create the engine
+    engine = sqlalchemy.create_engine(engine_str)
 
-   # Return it
-   return engine
+    # Return it
+    return engine
