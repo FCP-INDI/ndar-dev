@@ -34,7 +34,7 @@ def add_s3_path(cursor, entry):
         This method returns the input entry tuple with the s3 filepath
         (taken from IMAGE03) appended to the end
     '''
-    
+
     # Init variables
     # Get all relevant data from IMAGE03 using IMAGE_AGGREGATE results
     img03_cmd = '''
@@ -214,7 +214,7 @@ def main(inputs_dir, study_name, creds_path, sublist_yaml):
               from
               image_aggregate
               '''
-    
+
     # Get initial list form image_aggregate table
     cursor.execute(agg_cmd)
     agg_list = cursor.fetchall()
