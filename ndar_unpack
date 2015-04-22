@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 # See file COPYING distributed with ndar_unpack for copyright and license.
 
 import sys
@@ -621,13 +621,14 @@ class DICOMData(BaseData):
         series_uids = []
         for f in self.contents:
             try:
-                do = dicom.read_file(f)
+                do = dicom.read_file(f, force=True)
             except:
                 raise TypeError('non-DICOM found')
             try:
                 uid = str(do.SeriesInstanceUID)
             except AttributeError:
-                raise DataError('DICOM file without Series Instance UID')
+                uid = None
+                #raise DataError('DICOM file without Series Instance UID')
             if not uid:
                 # Create dummy uid for the purpose of extracting the file
                 uid = '001'
@@ -895,7 +896,7 @@ try:
             zf.close()
         except zipfile.BadZipfile:
             raise DataError('error in zip file')
-    elif 'tar' in args.input:
+    elif 'tar' in args.input or 'tgz' in args.input:
         import tarfile
         message(NOTICE, 'unpacking tar file...')
         try:
@@ -904,6 +905,7 @@ try:
                 tf.extract(item,unpacked_dir)
         except:
             raise DataError('error in tar file')
+    
     else:
         message(DEBUG, 'linking source to unpacked/')
         os.symlink(temp_source, os.path.join(unpacked_dir, source_basename))

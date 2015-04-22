@@ -48,14 +48,15 @@ def add_s3_path(cursor, entry):
                 where
                 subjectkey = :arg_1 and
                 interview_age = :arg_2 and
-                image_description = :arg_3
+                lower(image_description) = :arg_3
                 '''
     # Get values from entry tuple
     subkey = entry[0]
     age = entry[1]
-    img_type = entry[5]
+    img_type = entry[5].lower()
 
     # Match where IMG_AGG image_subtype = IMG03 image_description
+    print 'querying for %s, %s, %s...' % (subkey, age, img_type)
     cursor.execute(img03_cmd, arg_1=subkey, arg_2=age, arg_3=img_type)
     res = cursor.fetchall()
 
@@ -65,6 +66,8 @@ def add_s3_path(cursor, entry):
         print 'Found %d results for %s %s entries in '\
               'IMAGE03, just taking the first one for now...'\
               % (no_res, subkey, img_type)
+    elif no_res == 0:
+        raise Exception('unable to find any s3 data')
     # Take the first entry
     res = res[0]
     entry_list = list(entry)
@@ -122,6 +125,7 @@ def run_ndar_unpack(s3_path, out_nii, aws_access_key_id,
         raise OSError('ndar_unpack failed, responded with:\n'\
                       'stdout: %s\n\nstderror: %s' % (stdout, stderr))
 
+
 # Main routine
 def main(inputs_dir, study_name, creds_path, sublist_yaml):
     '''
@@ -161,25 +165,20 @@ def main(inputs_dir, study_name, creds_path, sublist_yaml):
     import os
     import sys
     import yaml
-    import sys
 
     # Init variables
     aws_access_key_id, aws_secret_access_key = \
             fetch_creds.return_aws_keys(creds_path)
     cursor = fetch_creds.return_cursor(creds_path)
 
-    # Take care of formatting/creating inputs directory
-    inputs_dir = os.path.abspath(inputs_dir)
-    if not inputs_dir.endswith('/'):
-        inputs_dir = inputs_dir.rstrip('/')
     # Create the directory if it does not exist
     if not os.path.exists(inputs_dir):
         try:
             print 'creating inputs directory: %s' % inputs_dir
             os.makedirs(inputs_dir)
-        except OSError as e:
+        except OSError as err:
             print 'Unable to make inputs directory %s' % inputs_dir
-            print 'This might be due to permissions: %s' %e
+            print 'This might be due to permissions: %s' % err
             sys.exit()
 
     # Test the yaml subject list file for errors
@@ -214,6 +213,14 @@ def main(inputs_dir, study_name, creds_path, sublist_yaml):
               from
               image_aggregate
               '''
+    #agg_cmd = '''
+    #          select subjectkey, interview_age, src_subject_id,
+    #          image_description, image_modality,
+    #          scanner_manufacturer_pd, mri_repetition_time_pd, mri_echo_time_pd
+    #          flip_angle, image_file
+    #          from
+    #          image03
+    #          '''
 
     # Get initial list form image_aggregate table
     cursor.execute(agg_cmd)
@@ -225,19 +232,30 @@ def main(inputs_dir, study_name, creds_path, sublist_yaml):
     # Go through IMAGE_AGGREGATE; create anat/rest dictionary of subjectkeys
     subkey_dict = {i:{'anat' : [], 'rest' : []} for i in subkeys}
     for i in agg_list:
+        # Get subject GUID and image type (MRI or fMRI)
         subkey = i[0]
-        img_type = i[3].lower()
-        if 'fmri' in img_type or 'frmi' in img_type:
+        img_type = i[5]
+        # If unknown, set img_type to blank string
+        if img_type == None:
+            img_type = ''
+        else:
+            img_type = img_type.lower()
+        # Check if img_type is MRI/fMRI
+        if ('fmri' in img_type or 'resting' in img_type or 'epi' in img_type):# and \
+            # ('resting' in img_file or 'fmri' in img_file or 'functional' in img_file):
             subkey_dict[subkey]['rest'].append(i)
-        elif 'mri' in img_type:
+        elif ('mri' in img_type or 'structural' in img_type or 'mprage' in img_type):# and \
+            #('anat' in img_file or 'mprage' in img_file or 'structural' in img_file):
             subkey_dict[subkey]['anat'].append(i)
         else:
             print 'unkown image type for entry, skipping...'
             print i
-
     # Prune any subjects that don't have both MRI and fMRI data
-    subkey_dict = {k:v for k,v in subkey_dict.items()\
-                       if k and v['anat'] and v['rest']}
+    subkey_dict = {k:v for k,v in subkey_dict.items() \
+                   if v['anat'] and v['rest']}
+    print 'found %d items with both anatomical and functional data' \
+            % (len(subkey_dict))
+
     # Iterate through dictionary to query IMAGE03 for S3 file paths
     for k,v in subkey_dict.items():
         # Get IMAGE_AGGREGATE entries for anat/rest
@@ -246,16 +264,36 @@ def main(inputs_dir, study_name, creds_path, sublist_yaml):
         print k
         # For each anatomical image in IMAGE_AGGREGATE
         for a in anat_entries:
-            i = 0
-            new_entry = add_s3_path(cursor, a)
-            subkey_dict[k]['anat'][i] = new_entry
-            i += 1
+            #i = 0
+            entries_tmp = []
+            try:
+                new_entry = add_s3_path(cursor, a)
+                entries_tmp.append(new_entry)
+                #subkey_dict[k]['anat'][i] = new_entry
+                #i += 1
+            except Exception as exc:
+                print exc.message
+                print 'Unable to find entry for', a
+        subkey_dict[k]['anat'] = entries_tmp
         # For each functional image in IMAGE_AGGREGATE
-        i = 0
         for r in rest_entries:
-            new_entry = add_s3_path(cursor, r)
-            subkey_dict[k]['rest'][i] = new_entry
-            i += 1
+            entries_tmp = []
+            try:
+                new_entry = add_s3_path(cursor, r)
+                entries_tmp.append(new_entry)
+                #subkey_dict[k]['rest'][i] = new_entry
+                #i += 1
+            except Exception as exc:
+                print exc.message
+                print 'Unable to add entry for', r
+                #subkey_dict[k]['rest'].remove(r)
+        subkey_dict[k]['rest'] = entries_tmp
+
+    # Prune any subjects that don't have both MRI and fMRI data
+    subkey_dict = {k:v for k,v in subkey_dict.items() \
+                   if v['anat'] and v['rest']}
+    print 'found %d items with both anatomical and functional data' \
+            % (len(subkey_dict))
 
     # Now create cpac-sublist, unique id is interview age for now
     # Also restricted to 1 anatomical image for now
@@ -272,10 +310,9 @@ def main(inputs_dir, study_name, creds_path, sublist_yaml):
     for sub in sublist:
         idx = sublist.index(sub)
         # First create subject directories
-        unique_sub_dir = '/'.join([inputs_dir,
-                                   study_name,
-                                   sub['subject_id'],
-                                   sub['unique_id']])
+        unique_sub_dir = os.path.join(inputs_dir, study_name,
+                                      str(sub['subject_id']),
+                                      str(sub['unique_id']))
         # If the file directory doesn't exist already
         if not os.path.exists(unique_sub_dir):
             print 'creating subject/session directories: %s' % unique_sub_dir
@@ -289,27 +326,7 @@ def main(inputs_dir, study_name, creds_path, sublist_yaml):
         # Set nifti file output
         s3_path = sub['anat']
         out_nii = anat_dir + '/' + 'anat.nii.gz'
-        # And try and extract the image
-        try:
-            print 'attempting to download and extract %s to %s'\
-                  % (s3_path, out_nii)
-            run_ndar_unpack(s3_path, out_nii, aws_access_key_id, 
-                                              aws_secret_access_key)
-            print 'Success!'
-            # If it is successful, replace s3_path with out_nii
-            sublist[idx]['anat'] = out_nii
-        except OSError as e:
-            print e
-            print 'Failed anatomical image %s extraction for %s.\n'\
-                  'Trying functional...' % (s3_path, sub['subject_id'])
-
-        # ndar_unpack the functional
-        for folder, s3_path in sub['rest'].items():
-            rest_dir = unique_sub_dir + '/' + folder.split('_rest')[0]
-            if not os.path.exists(rest_dir):
-                print 'creating functional directory: %s' % rest_dir
-                os.makedirs(rest_dir)
-            out_nii = rest_dir + '/' + 'rest.nii.gz'
+        if not os.path.exists(out_nii):
             # And try and extract the image
             try:
                 print 'attempting to download and extract %s to %s'\
@@ -318,11 +335,37 @@ def main(inputs_dir, study_name, creds_path, sublist_yaml):
                                                   aws_secret_access_key)
                 print 'Success!'
                 # If it is successful, replace s3_path with out_nii
-                sublist[idx]['rest'][folder] = out_nii
+                sublist[idx]['anat'] = out_nii
             except OSError as e:
                 print e
-                print 'Failed functional image %s extraction for %s'\
-                      % (s3_path, sub['subject_id'])
+                print 'Failed anatomical image %s extraction for %s.\n'\
+                      'Trying functional...' % (s3_path, sub['subject_id'])
+        else:
+            'Anatomical file %s exists! Skipping...' % out_nii
+
+        # ndar_unpack the functional for each functional
+        for folder, s3_path in sub['rest'].items():
+            rest_dir = unique_sub_dir + '/' + folder.split('_rest')[0]
+            if not os.path.exists(rest_dir):
+                print 'creating functional directory: %s' % rest_dir
+                os.makedirs(rest_dir)
+            out_nii = rest_dir + '/' + 'rest.nii.gz'
+            # And try and extract the image
+            if not os.path.exists(out_nii):
+                try:
+                    print 'attempting to download and extract %s to %s'\
+                          % (s3_path, out_nii)
+                    run_ndar_unpack(s3_path, out_nii, aws_access_key_id, 
+                                                      aws_secret_access_key)
+                    print 'Success!'
+                    # If it is successful, replace s3_path with out_nii
+                    sublist[idx]['rest'][folder] = out_nii
+                except OSError as e:
+                    print e
+                    print 'Failed functional image %s extraction for %s'\
+                          % (s3_path, sub['subject_id'])
+            else:
+                'Functional file %s eists! Skippng...' % out_nii
 
         # Print % complete
         i = idx+1
@@ -337,6 +380,7 @@ def main(inputs_dir, study_name, creds_path, sublist_yaml):
     # Return the subject list
     return sublist
 
+
 # Run main by default
 if __name__ == '__main__':
 
@@ -349,6 +393,10 @@ if __name__ == '__main__':
         study_name = str(sys.argv[2])
         creds_path = str(sys.argv[3])
         sublist_yaml = str(sys.argv[4])
+#         inputs_dir = '/tmp'
+#         study_name = 'site1'
+#         creds_path = '/home/dclark/secure-creds/aws-keys/ndar-dc-creds2.csv'
+#         sublist_yaml = '/tmp/sublist.yml'
     except IndexError as e:
         print 'Not enough input arguments, got IndexError: %s' % e
         print __doc__
