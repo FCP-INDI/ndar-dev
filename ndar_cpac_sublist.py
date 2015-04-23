@@ -78,6 +78,135 @@ def add_s3_path(cursor, entry):
     return tuple(entry_list)
 
 
+# Return an organized dictionary from the IMAGE_AGGREGATE table
+def build_subkey_dict(cursor, agg_results):
+    '''
+    Function to take a list of entry results from querying the
+    IMAGE_AGGREGATE table and return an organized dictionary of
+    anatomical and functional data with S3 paths; organized by
+    subjectkey
+
+    Parameters
+    ----------
+    cursor : OracleCursor
+        a cx_Oracle cursor object which is used to query and modify an
+        Oracle database
+    agg_results : list
+        a list of tuples that correspond to the column values for each
+        database entry
+
+    Returns
+    -------
+    subkey_dict : dictionary
+        a dictionary where the keys correspond to the subject GUIDs and
+        the values are dictionaries comprising of the anatomical and
+        functional entries for that subject GUID;
+        example:
+        {SUBJECTKEY : {'anat' : [(SUBJECTKEY, AGE, SUBJECTID,
+                                  IMG_CATEGORY, IMG_DIM, IMG_SUBTYPE,
+                                  SCANNER_MFG, TR, TE, FLIP_ANGLE, S3_PATH)],
+                       'rest' : [(SUBJECTKEY, AGE, SUBJECTID,
+                                  IMG_CATEGORY, IMG_DIM, IMG_SUBTYPE,
+                                  SCANNER_MFG, TR, TE, FLIP_ANGLE, S3_PATH)]
+                      }, ...
+        ...}
+
+    '''
+
+    # Build list of unique subjectkeys
+    subkeys = [agg_entry[0] for agg_entry in agg_results]
+    subkeys = list(set(subkeys))
+
+    # Go through IMAGE_AGGREGATE; create anat/rest dictionary of subjectkeys
+    subkey_dict = {subkey : {'anat' : [], 'rest' : []} for subkey in subkeys}
+    for agg_entry in agg_results:
+        # Get subject GUID and image type (MRI or fMRI)
+        subkey = agg_entry[0]
+        img_type = agg_entry[5]
+        # If unknown, set img_type to blank string
+        if img_type == None:
+            img_type = ''
+        else:
+            img_type = img_type.lower()
+        # Check if img_type is MRI/fMRI
+        if ('fmri' in img_type or 'resting' in img_type or 'epi' in img_type):
+            subkey_dict[subkey]['rest'].append(agg_entry)
+        elif ('mri' in img_type or 'structural' in img_type or 'mprage' in img_type):
+            subkey_dict[subkey]['anat'].append(agg_entry)
+        else:
+            print 'unkown image type for entry, skipping...'
+            print agg_entry
+
+    # Prune any subjects that don't have both MRI and fMRI data
+    subkey_dict = {subkey : entry_dict for subkey, entry_dict in \
+                   subkey_dict.items() if entry_dict['anat'] and entry_dict['rest']}
+    print 'found %d items with both anatomical and functional data' \
+            % (len(subkey_dict))
+
+    # Iterate through dictionary to query IMAGE03 for S3 file paths
+    for subkey, entry_dict in subkey_dict.items():
+        # Get IMAGE_AGGREGATE entries for anat/rest
+        anat_entries = entry_dict['anat']
+        rest_entries = entry_dict['rest']
+        # For each anatomical image in IMAGE_AGGREGATE
+        for a_entry in anat_entries:
+            entries_tmp = []
+            try:
+                new_entry = add_s3_path(cursor, a_entry)
+                entries_tmp.append(new_entry)
+            except Exception as exc:
+                print exc.message
+                print 'Unable to find entry for', a_entry
+        subkey_dict[subkey]['anat'] = entries_tmp
+        # For each functional image in IMAGE_AGGREGATE
+        for r_entry in rest_entries:
+            entries_tmp = []
+            try:
+                new_entry = add_s3_path(cursor, r_entry)
+                entries_tmp.append(new_entry)
+            except Exception as exc:
+                print exc.message
+                print 'Unable to add entry for', r_entry
+        subkey_dict[subkey]['rest'] = entries_tmp
+
+    # Prune any subjects that don't have both MRI and fMRI data
+    subkey_dict = {subkey : entry_dict for subkey, entry_dict in \
+                   subkey_dict.items() if entry_dict['anat'] and entry_dict['rest']}
+    print 'found %d items with both anatomical and functional data' \
+            % (len(subkey_dict))
+
+    # Return the subkey dictionary
+    return subkey_dict
+
+
+# Query and build phenotype file
+def build_phenotype(cursor, subkey_dict):
+    '''
+    Function which takes thesubject key dictionary and builds a C-PAC-
+    compatible phenotype file for use in C-PAC's group analysis
+
+    Parameters
+    ----------
+    cursor : OracleCursor
+        a cx_Oracle cursor object which is used to query and modify an
+        Oracle database
+    subkey_dict : dictionary
+        a dictionary where the keys correspond to the subject GUIDs and
+        the values are dictionaries comprising of the anatomical and
+        functional entries for that subject GUID;
+
+    Returns
+    -------
+    pheno_list
+    '''
+
+    # Import packages
+
+    # Init variables
+
+
+
+
 # Unzip and extract data from S3 via ndar_unpack
 def run_ndar_unpack(s3_path, out_nii, aws_access_key_id, 
                                       aws_secret_access_key):
@@ -149,7 +278,7 @@ def main(inputs_dir, study_name, creds_path, sublist_yaml):
 
     Returns
     -------
-    sublist : list (dict)
+    sublist : list
         Returns a list of dictionaries where the format of each dict-
         ionary is as follows:
         {'anat': '/path/to/anat.nii.gz',
@@ -192,11 +321,12 @@ def main(inputs_dir, study_name, creds_path, sublist_yaml):
         print 'cannot write to output directory for sublist %s, please '\
               'specify a different path' % sublist_yaml
 
-    # Get image aggregate results
+    # Query IMAGE_AGGREGATE for subject image info, get S3 path from IMAGE03
+    # Here's how the column names correspond between the two:
     # IMAGE_AGGREGATE    --->       IMAGE03 columns          EXAMPLE
     # ---------------               ---------------          -------
     # subjectkey                    subjectkey               'NDARABCD1234'
-    # image_subtype                 image_description        'EPI', 'MPRAGE'
+    # image_subtype                 image_description        'MPRAGE', 'EPI'
     # image_category                image_modality           'MRI', 'FMRI'
     # image_scanner_manufacturer    scanner_manufacturer_pd  'SIEMENS'
     # image_tr                      mri_repetition_time_pd   '2.53'
@@ -208,92 +338,18 @@ def main(inputs_dir, study_name, creds_path, sublist_yaml):
     agg_cmd = '''
               select subjectkey, interview_age, subject_id,
               image_category, image_dimensions, image_subtype,
-              image_scanner_manufacturer, image_tr, image_te, 
+              image_scanner_manufacturer, image_tr, image_te,
               image_flip_angle
               from
               image_aggregate
               '''
-    #agg_cmd = '''
-    #          select subjectkey, interview_age, src_subject_id,
-    #          image_description, image_modality,
-    #          scanner_manufacturer_pd, mri_repetition_time_pd, mri_echo_time_pd
-    #          flip_angle, image_file
-    #          from
-    #          image03
-    #          '''
 
     # Get initial list form image_aggregate table
     cursor.execute(agg_cmd)
-    agg_list = cursor.fetchall()
+    img_agg_results = cursor.fetchall()
 
-    # Build list of unique subjectkeys
-    subkeys = [i[0] for i in agg_list]
-    subkeys = list(set(subkeys))
-    # Go through IMAGE_AGGREGATE; create anat/rest dictionary of subjectkeys
-    subkey_dict = {i:{'anat' : [], 'rest' : []} for i in subkeys}
-    for i in agg_list:
-        # Get subject GUID and image type (MRI or fMRI)
-        subkey = i[0]
-        img_type = i[5]
-        # If unknown, set img_type to blank string
-        if img_type == None:
-            img_type = ''
-        else:
-            img_type = img_type.lower()
-        # Check if img_type is MRI/fMRI
-        if ('fmri' in img_type or 'resting' in img_type or 'epi' in img_type):# and \
-            # ('resting' in img_file or 'fmri' in img_file or 'functional' in img_file):
-            subkey_dict[subkey]['rest'].append(i)
-        elif ('mri' in img_type or 'structural' in img_type or 'mprage' in img_type):# and \
-            #('anat' in img_file or 'mprage' in img_file or 'structural' in img_file):
-            subkey_dict[subkey]['anat'].append(i)
-        else:
-            print 'unkown image type for entry, skipping...'
-            print i
-    # Prune any subjects that don't have both MRI and fMRI data
-    subkey_dict = {k:v for k,v in subkey_dict.items() \
-                   if v['anat'] and v['rest']}
-    print 'found %d items with both anatomical and functional data' \
-            % (len(subkey_dict))
-
-    # Iterate through dictionary to query IMAGE03 for S3 file paths
-    for k,v in subkey_dict.items():
-        # Get IMAGE_AGGREGATE entries for anat/rest
-        anat_entries = v['anat']
-        rest_entries = v['rest']
-        print k
-        # For each anatomical image in IMAGE_AGGREGATE
-        for a in anat_entries:
-            #i = 0
-            entries_tmp = []
-            try:
-                new_entry = add_s3_path(cursor, a)
-                entries_tmp.append(new_entry)
-                #subkey_dict[k]['anat'][i] = new_entry
-                #i += 1
-            except Exception as exc:
-                print exc.message
-                print 'Unable to find entry for', a
-        subkey_dict[k]['anat'] = entries_tmp
-        # For each functional image in IMAGE_AGGREGATE
-        for r in rest_entries:
-            entries_tmp = []
-            try:
-                new_entry = add_s3_path(cursor, r)
-                entries_tmp.append(new_entry)
-                #subkey_dict[k]['rest'][i] = new_entry
-                #i += 1
-            except Exception as exc:
-                print exc.message
-                print 'Unable to add entry for', r
-                #subkey_dict[k]['rest'].remove(r)
-        subkey_dict[k]['rest'] = entries_tmp
-
-    # Prune any subjects that don't have both MRI and fMRI data
-    subkey_dict = {k:v for k,v in subkey_dict.items() \
-                   if v['anat'] and v['rest']}
-    print 'found %d items with both anatomical and functional data' \
-            % (len(subkey_dict))
+    # Build subkey dictionary from query results
+    subkey_dict = build_subkey_dict(img_agg_results, cursor)
 
     # Now create cpac-sublist, unique id is interview age for now
     # Also restricted to 1 anatomical image for now
@@ -372,7 +428,6 @@ def main(inputs_dir, study_name, creds_path, sublist_yaml):
         per = 100*(float(i)/no_subs)
         print 'Done extracting %d/%d\n%f%% complete' % (i, no_subs, per)
 
-
     # And write it to disk
     with open(sublist_yaml,'w') as f:
         f.write(yaml.dump(sublist))
@@ -393,10 +448,6 @@ if __name__ == '__main__':
         study_name = str(sys.argv[2])
         creds_path = str(sys.argv[3])
         sublist_yaml = str(sys.argv[4])
-#         inputs_dir = '/tmp'
-#         study_name = 'site1'
-#         creds_path = '/home/dclark/secure-creds/aws-keys/ndar-dc-creds2.csv'
-#         sublist_yaml = '/tmp/sublist.yml'
     except IndexError as e:
         print 'Not enough input arguments, got IndexError: %s' % e
         print __doc__
