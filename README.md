@@ -37,6 +37,7 @@ Python depenencies:
 - [Nibabel](http://nipy.org/nibabel/api.html) - Python package for read/write access to various neuroimaging data formats.
 - [Nipype](http://nipy.sourceforge.net/nipype/documentation.html) - Python package for Neuroimaging data analysis pipelines.
 - [Numpy](http://docs.scipy.org/doc/numpy/reference/) - Python package for fast numerical computations.
+- [Pandas](http://pandas.pydata.org/) - Python library providing data structures and tools for high-performance data analysis.
 - [PyYaml](http://pyyaml.org/wiki/PyYAMLDocumentation) - Python package for parsing and emitting Yaml files.
 - [pydicom](https://code.google.com/p/pydicom/) - Python package for working with DICOM files.
 
